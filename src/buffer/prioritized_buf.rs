@@ -1,11 +1,13 @@
 use std::collections::BinaryHeap;
 use crate::models::sensors::SensorData;
 use tokio::sync::Mutex;
+use std::time::Instant;
+use chrono::{DateTime, Utc};
 
 pub struct PrioritizedBuffer {
     capacity: usize,
     heap: Mutex<BinaryHeap<SensorData>>,
-    dropped_samples: Mutex<Vec<SensorData>>,
+    dropped_samples: Mutex<Vec<(Instant,SensorData)>>,
 }
 
 impl PrioritizedBuffer {
@@ -26,18 +28,25 @@ impl PrioritizedBuffer {
                     // Drop new data if its priority is lower
                     // Data loss
                     let mut dropped = self.dropped_samples.lock().await;
-                    dropped.push(data);
+                    dropped.push((Instant::now(), data));
                     return Err("Buffer full, low-priority data dropped".to_string());
                 } else {
                     // Drop lowest-priority data from heap
                     // Data drop
                     let dropped_data = heap.pop().unwrap();
                     let mut dropped = self.dropped_samples.lock().await;
-                    dropped.push(dropped_data);
+                    dropped.push((Instant::now(), dropped_data));
                 }
             }
         }
+        let data_timestamp = data.timestamp.clone();
+        let data_sensor = data.sensor_type.clone();
         heap.push(data);
+        
+        //Latency
+        let buffer_timestamp = Utc::now();
+        let latency = buffer_timestamp.signed_duration_since(data_timestamp).num_microseconds().unwrap() as f64 / 1000.0;
+        log::info!("Buffer insertion latency for {:?}: {}ms", data_sensor, latency);
         Ok(())
     }
 
@@ -45,7 +54,7 @@ impl PrioritizedBuffer {
         self.heap.lock().await.pop()
     }
 
-    pub async fn get_dropped_samples(&self) -> Vec<SensorData> {
+    pub async fn get_dropped_samples(&self) -> Vec<(Instant,SensorData)> {
         self.dropped_samples.lock().await.clone()
     }
 }
