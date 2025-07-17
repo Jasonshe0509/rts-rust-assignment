@@ -7,12 +7,12 @@ use rand::{Rng, SeedableRng};
 use tokio::time::{interval, Duration};
 use crate::models::sensors::{SensorData, SensorType, SensorPayloadDataType};
 
-pub async fn start_telemetry_sensor(buffer: Arc<PrioritizedBuffer>, interval_ms: u64) {
+pub async fn start_antenna_sensor(buffer: Arc<PrioritizedBuffer>, interval_ms: u64) {
     let mut interval = tokio::time::interval(Duration::from_millis(interval_ms));
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let start_time = Instant::now();
     let mut expected_next_tick = start_time;
-    let mut missed_cycles = 0;
+    //let mut missed_cycles = 0;
     loop {
         let tick_start = Instant::now();
         interval.tick().await;
@@ -20,37 +20,28 @@ pub async fn start_telemetry_sensor(buffer: Arc<PrioritizedBuffer>, interval_ms:
 
         //jitter
         let jitter = actual_tick_time.duration_since(tick_start).as_millis() as f64;
-        info!("Telemetry data acquisition jitter: {}ms", jitter);
+        info!("Antenna data acquisition jitter: {}ms", jitter);
 
         //drift
         let drift = actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
-        info!("Telemetry data acquisition drift: {}ms", drift);
+        info!("Antenna data acquisition drift: {}ms", drift);
         expected_next_tick += Duration::from_millis(interval_ms);
         let data = SensorData {
-            sensor_type: SensorType::OnboardTelemetrySensor,
-            priority: 3,
+            sensor_type: SensorType::AntennaPointingSensor,
+            priority: 1,
             timestamp: Utc::now(),
-            data: SensorPayloadDataType::TelemetryData {
-                power: rng.gen_range(50.0..200.0),
-                temperature: rng.gen_range(20.0..80.0),
-                location: (
-                    rng.gen_range(-180.0..180.0),
-                    rng.gen_range(-90.0..90.0),
-                    rng.gen_range(400.0..800.0),
-                ),
+            data: SensorPayloadDataType::AntennaData{
+                azimuth: rng.gen_range(0.0..360.0),
+                elevation: rng.gen_range(-90.0..90.0),
+                polarization: rng.gen_range(0.0..1.0),
             },
         };
-       
+        //log::info!("Data generated from {:?}", data.sensor_type);
 
-        match buffer.push(data).await {
-            Ok(_) => missed_cycles = 0,
+        match buffer.push(data).await{
+            Ok(_) => {},
             Err(e) => {
-                missed_cycles += 1;
-                warn!("Telemetry data dropped: {}", e);
-                if missed_cycles > 3 {
-                    error!("Critical alert: >3 consecutive telemetry data misses");
-                    missed_cycles = 0;
-                }
+                warn!("Antenna data dropped: {}",e);
             }
         }
     }

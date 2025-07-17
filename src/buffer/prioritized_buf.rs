@@ -23,15 +23,14 @@ impl PrioritizedBuffer {
         let mut heap = self.heap.lock().await;
         if heap.len() >= self.capacity {
             // Buffer full, drop lowest-priority data if new data has higher priority
-            if let Some(lowest) = heap.peek(){
-                if data.priority < lowest.priority {
+            if let Some(highest) = heap.peek(){
+                if data.priority <= highest.priority {
                     // Drop new data if its priority is lower
                     // Data loss
                     let mut dropped = self.dropped_samples.lock().await;
                     dropped.push((Instant::now(), data));
                     return Err("Buffer full, low-priority data dropped".to_string());
                 } else {
-                    // Drop lowest-priority data from heap
                     // Data drop
                     let dropped_data = heap.pop().unwrap();
                     let mut dropped = self.dropped_samples.lock().await;
