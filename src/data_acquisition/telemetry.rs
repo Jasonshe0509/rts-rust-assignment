@@ -12,15 +12,17 @@ pub async fn start_telemetry_sensor(buffer: Arc<PrioritizedBuffer>, interval_ms:
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let start_time = Instant::now();
     let mut expected_next_tick = start_time;
+    let mut last_execution = start_time;
     let mut missed_cycles = 0;
     loop {
-        let tick_start = Instant::now();
         interval.tick().await;
         let actual_tick_time = Instant::now();
 
         //jitter
-        let jitter = actual_tick_time.duration_since(tick_start).as_millis() as f64;
+        let actual_interval = actual_tick_time.duration_since(last_execution).as_millis() as f64;
+        let jitter = (actual_interval - interval_ms as f64).abs();
         info!("Telemetry data acquisition jitter: {}ms", jitter);
+        last_execution = actual_tick_time;
 
         //drift
         let drift = actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;

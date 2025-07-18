@@ -52,7 +52,7 @@ impl Task {
                 }
                 TaskName::ThermalControl => {
                     //info!("Thermal Control reducing power usage");
-                    (Some(data), command)
+                    (None, command)
                 }
             }
         }else {
