@@ -12,14 +12,14 @@ pub struct SensorData {
 
 #[derive(Debug, Clone, PartialEq,Serialize, Deserialize)]
 pub enum SensorType{
-    PushbroomSensor,
+    RadiationSensor,
     OnboardTelemetrySensor,
     AntennaPointingSensor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SensorPayloadDataType{
-    EarthObservationData {image: String, angle: f32, exposure: f32,gain:f32},
+    RadiationData {proton_flux: f32, solar_radiation_level: f32, total_ionizing_doze: f32},
     TelemetryData {power: f32, temperature: f32, location: (f32, f32, f32)},
     AntennaData {azimuth: f32, elevation: f32, polarization: f32},
 }

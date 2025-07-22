@@ -31,14 +31,13 @@ pub async fn start_pushbroom_sensor(buffer: Arc<PrioritizedBuffer>, interval_ms:
         
         let data_timestamp = Utc::now();
         let data = SensorData {
-            sensor_type: SensorType::PushbroomSensor,
+            sensor_type: SensorType::RadiationSensor,
             priority: 2,
             timestamp: data_timestamp,
-            data: SensorPayloadDataType::EarthObservationData {
-                image: "image.png".to_string(), // Simulate 1KB image data
-                angle: rng.gen_range(0.0..360.0),
-                exposure: rng.gen_range(1.0..10.0),
-                gain: rng.gen_range(1.0..10.0),
+            data: SensorPayloadDataType::RadiationData {
+                proton_flux: rng.gen_range(10.0..1000000.0),
+                solar_radiation_level: rng.gen_range(0.00000001..0.001),
+                total_ionizing_doze: rng.gen_range(0.0..200.0),
             },
         };
         //log::info!("Data generated from {:?}", data.sensor_type);

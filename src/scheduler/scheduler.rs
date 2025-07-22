@@ -60,7 +60,7 @@ impl Scheduler {
                         };
                         self.task_queue.lock().await.push(new_task);
                     }
-                    SensorType::PushbroomSensor => {
+                    SensorType::RadiationSensor => {
                         let new_task = Task {
                             name: TaskName::ImageProcessing,
                             period: Duration::from_millis(200),

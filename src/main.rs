@@ -6,7 +6,7 @@ mod scheduler;
 use crate::buffer::prioritized_buf::PrioritizedBuffer;
 use crate::scheduler::scheduler::Scheduler;
 use std::sync::Arc;
-use data_acquisition::{pushbroom::start_pushbroom_sensor, telemetry::start_telemetry_sensor, antenna::start_antenna_sensor};
+use data_acquisition::{radiation::start_pushbroom_sensor, telemetry::start_telemetry_sensor, antenna::start_antenna_sensor};
 use env_logger;
 
 #[tokio::main]
