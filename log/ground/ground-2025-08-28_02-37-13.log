@@ -1,0 +1,5 @@
+[2m2025-08-27T18:37:13.374232Z[0m [32m INFO[0m [2m11:[0m System started successfully!
+[2m2025-08-27T18:37:13.453957Z[0m [32m INFO[0m [2m15:[0m Test!
+[2m2025-08-27T18:37:13.490069Z[0m [32m INFO[0m [2m19:[0m Queue declare successfully
+[2m2025-08-27T18:37:13.490725Z[0m [32m INFO[0m [2m27:[0m Consumer declare successfully
+[2m2025-08-27T18:37:13.491540Z[0m [31mERROR[0m [2m335:[0m error doing IO [3merror[0m[2m=[0mError { kind: IOError(Os { code: 10093, kind: Uncategorized, message: "Either the application has not called WSAStartup, or WSAStartup failed." }), notifier: None }
