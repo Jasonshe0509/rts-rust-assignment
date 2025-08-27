@@ -7,7 +7,6 @@ use chrono::{DateTime, Utc};
 pub struct PrioritizedBuffer {
     capacity: usize,
     heap: Mutex<BinaryHeap<SensorData>>,
-    dropped_samples: Mutex<Vec<(Instant,SensorData)>>,
 }
 
 impl PrioritizedBuffer {
@@ -15,7 +14,6 @@ impl PrioritizedBuffer {
         PrioritizedBuffer {
             capacity: set_capacity,
             heap: Mutex::new(BinaryHeap::with_capacity(set_capacity)),
-            dropped_samples: Mutex::new(Vec::new()),
         }
     }
 
@@ -27,14 +25,11 @@ impl PrioritizedBuffer {
                 if data.priority <= highest.priority {
                     // Drop new data if its priority is lower
                     // Data loss
-                    let mut dropped = self.dropped_samples.lock().await;
-                    dropped.push((Instant::now(), data));
-                    return Err("Buffer full, low-priority data dropped".to_string());
+                    return Err(format!("Buffer full, {:?} data loss",data.sensor_type));
                 } else {
                     // Data drop
                     let dropped_data = heap.pop().unwrap();
-                    let mut dropped = self.dropped_samples.lock().await;
-                    dropped.push((Instant::now(), dropped_data));
+                    return Err(format!("Buffer full, {:?} data dropped",dropped_data.sensor_type));
                 }
             }
         }
@@ -51,9 +46,5 @@ impl PrioritizedBuffer {
 
     pub async fn pop(&self) -> Option<SensorData> {
         self.heap.lock().await.pop()
-    }
-
-    pub async fn get_dropped_samples(&self) -> Vec<(Instant,SensorData)> {
-        self.dropped_samples.lock().await.clone()
     }
 }
