@@ -1,19 +1,17 @@
 use std::cmp::Ordering;
 use tokio::time::{Duration,Instant};
-use crate::models::commands::Command;
-use crate::models::sensors::{SensorData, SensorPayloadDataType};
+use crate::satellite::command::Command;
+use crate::satellite::sensor::{SensorData, SensorPayloadDataType};
 use log::{info,warn};
-
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskName {
     HealthMonitoring,
-    ImageProcessing,
+    SpaceWeatherMonitoring,
     AntennaAlignment,
     ThermalControl,
-
 }
-
 #[derive(Debug, Clone)]
 pub struct Task {
     pub name: TaskName,
@@ -42,7 +40,7 @@ impl Task {
                     }
                     (Some(data), command)
                 },
-                TaskName::ImageProcessing => {
+                TaskName::SpaceWeatherMonitoring => {
                     //info!("Image Processing processing data");
                     (Some(data), command)
                 },
