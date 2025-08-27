@@ -16,6 +16,6 @@ async fn main(){
     radiation_sensor.spawn(buffer.clone());
     antenna_sensor.spawn(buffer.clone());
 
-    tokio::time::sleep(Duration::from_secs(20)).await;
+    tokio::time::sleep(Duration::from_secs(180)).await;
     
 }

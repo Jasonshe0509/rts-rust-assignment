@@ -1,12 +1,14 @@
 use std::cmp::Ordering;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime,Utc};
 use serde::{Deserialize, Serialize};
 use crate::satellite::buffer::PrioritizedBuffer;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::Arc;
 use log::{error, info, warn};
 use rand::{Rng, SeedableRng};
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, Duration,Instant};
+use tokio::sync::Mutex;
+use quanta::Clock;
+use hdrhistogram::Histogram;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SensorData {
@@ -67,27 +69,44 @@ impl Sensor{
 
     pub fn spawn(mut self, buffer: Arc<PrioritizedBuffer>){
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(self.interval_ms));
+            let clock = Clock::new();
+            let now = tokio::time::Instant::now();
+            let mut interval = tokio::time::interval_at(now + Duration::from_millis(self.interval_ms), Duration::from_millis(self.interval_ms));
             let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-            let start_time = Instant::now();
-            let mut expected_next_tick = start_time;
+            let start_time = clock.now();
+            let mut expected_next_tick = start_time + Duration::from_millis(self.interval_ms);
             let mut last_execution = start_time;
             let mut missed_cycles = 0;
-            
+
+            let mut jitter_histogram = Histogram::<u64>::new_with_bounds(1,1_000_000,3).unwrap();
+
+            let mut cycle_count = 0;
             loop {
                 interval.tick().await;
-                let actual_tick_time = Instant::now();
+                let actual_tick_time = clock.now();
 
                 //jitter
-                // let actual_interval = actual_tick_time.duration_since(last_execution).as_millis() as f64;
-                // let jitter = (actual_interval - self.interval_ms as f64).abs();
-                // info!("Antenna data acquisition jitter: {}ms", jitter);
-                // last_execution = actual_tick_time;
+                let actual_interval = actual_tick_time.duration_since(last_execution).as_secs_f64() * 1000.0;
+                let jitter = (actual_interval - self.interval_ms as f64).abs();
+                info!("{:?} jitter: {:.3} ms", self.sensor_type, jitter);
+                last_execution = actual_tick_time;
+
+                jitter_histogram.record((jitter *1000.0) as u64).unwrap();
+
+                if cycle_count % 100 == 0 && cycle_count > 99 {
+                    info!("{:?} jitter stats: mean={:.3}ms, p99={:.3}ms, max={:.3}ms",
+                    self.sensor_type,
+                    jitter_histogram.mean() / 1000.0,
+                    jitter_histogram.value_at_quantile(0.99) as f64 / 1000.0,
+                    jitter_histogram.max() as f64 / 1000.0);
+                }
+                cycle_count +=1;
 
                 //drift
-                let drift = actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
+                let drift = actual_tick_time.duration_since(expected_next_tick).as_secs_f64() * 1000.0;
                 info!("{:?} data acquisition drift: {}ms", self.sensor_type,drift);
                 expected_next_tick += Duration::from_millis(self.interval_ms);
+
 
                 let data = match self.sensor_type{
                     SensorType::AntennaPointingSensor => SensorData {
