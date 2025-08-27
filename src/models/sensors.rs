@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use crate::models::tasks::TaskName;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SensorData {
@@ -9,6 +10,12 @@ pub struct SensorData {
     pub sensor_type: SensorType,
     pub data: SensorPayloadDataType,
 }
+
+// pub struct ProcessedData {
+//     pub task_name: TaskName,
+//     pub action: String,
+//     pub sensor_data: SensorPayloadDataType,
+// }
 
 #[derive(Debug, Clone, PartialEq,Serialize, Deserialize)]
 pub enum SensorType{

@@ -1,5 +1,5 @@
 
 pub enum Command {
-    TC ,
+    TC , //Thermal Task (internal)
 }
 

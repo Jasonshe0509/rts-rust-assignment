@@ -7,7 +7,7 @@ use log::{info,warn};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskName {
-    HealthMonitoring,
+    HealthMonitoring, 
     ImageProcessing,
     AntennaAlignment,
     ThermalControl,
