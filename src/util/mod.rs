@@ -1,2 +1,2 @@
 pub mod log_generator;
-mod compressor;
+pub mod compressor;
