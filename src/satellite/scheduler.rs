@@ -1,142 +1,132 @@
 use crate::satellite::buffer::PrioritizedBuffer;
-use crate::satellite::task::{Task, TaskName};
+use crate::satellite::task::{Task, TaskName, TaskType};
 use crate::satellite::command::Command;
 use std::sync::Arc;
 use tokio::time::{Duration, Instant};
-use log::{info, warn};
+use log::{info, log, warn};
 use std::collections::BinaryHeap;
+use quanta::Clock;
 use tokio::sync::Mutex;
-use crate::satellite::sensor::SensorType;
+use crate::satellite::sensor::{Sensor, SensorData, SensorType};
 
 
-pub struct Scheduler {
-    buffer: Arc<PrioritizedBuffer>,
-    task_queue: Mutex<BinaryHeap<Task>>,
-    last_execution: Mutex<Vec<(TaskName, Instant)>>, //For drift and jitter
-    active_time: Mutex<Duration>, //For CPU utilization computation
+pub struct Scheduler{
+    sensor_buffer: Arc<PrioritizedBuffer>,
+    task_queue: Arc<Mutex<BinaryHeap<Task>>>,
+    tasks: Vec<TaskType>,
 }
 
 impl Scheduler {
-    pub fn new(buffer: Arc<PrioritizedBuffer>) -> Self {
+    pub fn new(buffer: Arc<PrioritizedBuffer>, tasks_list: Vec<TaskType>) -> Self {
         Scheduler {
-            buffer,
-            task_queue: Mutex::new(BinaryHeap::new()),
-            last_execution: Mutex::new(Vec::new()),
-            active_time: Mutex::new(Duration::from_millis(0)),
+            sensor_buffer: buffer,
+            task_queue: Arc::new(Mutex::new(BinaryHeap::new())),
+            tasks: tasks_list,
         }
     }
 
     async fn preempt(&self, command: Command) {
-        let now = Instant::now();
-        match command{
+        let clock = Clock::new();
+        let now = clock.now();
+        match command {
             Command::TC => {
                 let new_task = Task {
-                    name: TaskName::ThermalControl,
-                    period: Duration::from_millis(50),
+                    task: TaskType::new(TaskName::ThermalControl,None, Duration::from_millis(500)),
                     release_time: now,
-                    deadline: now + Duration::from_millis(50),
+                    deadline: now + Duration::from_millis(500),
                     data: None,
                     priority: 5,
                 };
                 self.task_queue.lock().await.push(new_task);
-                //info!("Preempted TC");
+                info!("Preempted TC");
             }
         }
     }
 
-    pub async fn schedule(&self) {
-        loop {
-            let now = Instant::now();
-            if let Some(current_data) = self.buffer.pop().await{
-                match current_data.sensor_type {
-                    SensorType::OnboardTelemetrySensor => {
-                        let new_task = Task {
-                            name: TaskName::HealthMonitoring,
-                            period: Duration::from_millis(100),
-                            release_time: now,
-                            deadline: now + Duration::from_millis(100),
-                            data: Some(current_data),
-                            priority: 1,
-                        };
-                        self.task_queue.lock().await.push(new_task);
-                    }
-                    SensorType::RadiationSensor => {
-                        let new_task = Task {
-                            name: TaskName::SpaceWeatherMonitoring,
-                            period: Duration::from_millis(200),
-                            release_time: now,
-                            deadline: now + Duration::from_millis(200),
-                            data: Some(current_data),
-                            priority: 1,
-                        };
-                        self.task_queue.lock().await.push(new_task);
-                    }
-                    SensorType::AntennaPointingSensor => {
-                        let new_task = Task {
-                            name: TaskName::AntennaAlignment,
-                            period: Duration::from_millis(300),
-                            release_time: now,
-                            deadline: now + Duration::from_millis(300),
-                            data: Some(current_data),
-                            priority: 1,
-                        };
-                        self.task_queue.lock().await.push(new_task);
-                    }
+    pub fn schedule(&self) {
+        for task_type in self.tasks.iter().cloned(){
+            let task_queue = self.task_queue.clone();
+            tokio::spawn(async move {
+                let clock = Clock::new();
+                let now = clock.now();
+                let now2 = Instant::now();
+                let mut interval = tokio::time::interval_at(now2 + Duration::from_millis(task_type.interval_ms.unwrap()),
+                                                            Duration::from_millis(task_type.interval_ms.unwrap()));
+                loop {
+                    interval.tick().await;
+                    let new_task = Task {
+                        task: task_type.clone(),
+                        release_time: now,
+                        deadline: now + task_type.process_time,
+                        data: None,
+                        priority: 1
+                    };
+                    task_queue.lock().await.push(new_task);
                 }
-            }
+            });
         }
     }
 
     pub async fn run(&self) {
-        let start_time = Instant::now();
-        loop{
-            let now = Instant::now();
+        let clock = Clock::new();
+        loop {
+            let start = clock.now();
             let recent_task = self.task_queue.lock().await.pop();
-            match recent_task{
-                Some(task) => {
-                    //Check for deadline violation
-                    if now > task.deadline{
-                        warn!("Deadline violation for task {:?}: {:?}", task.name, now.duration_since(task.deadline));
+            let mut valid = false;
+            match recent_task {
+                Some(mut task) => {
+                    loop {
+                        let read_data_time = clock.now().duration_since(start);
+                        if read_data_time > Duration::from_millis(50) {
+                            warn!("{:?} task terminate due to data reading time exceed. \
+                            Sensor data for task not received. Priority of data adjust to be increased.", task.task.name);
+                            break;
+                        }
+                        if !self.sensor_buffer.is_empty().await {
+                            let sensor_data = self.sensor_buffer.pop().await.unwrap();
+
+                            match task.task.name {
+                                TaskName::AntennaAlignment => {
+                                    if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
+                                        task.data = Some(sensor_data);
+                                        valid = true;
+                                        break;
+                                    }
+                                }
+                                TaskName::HealthMonitoring => {
+                                    if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
+                                        task.data = Some(sensor_data);
+                                        valid = true;
+                                        break;
+                                    }
+                                }
+                                TaskName::SpaceWeatherMonitoring => {
+                                    if sensor_data.sensor_type == SensorType::RadiationSensor {
+                                        task.data = Some(sensor_data);
+                                        valid = true;
+                                        break;
+                                    }
+                                }
+                                _ => {
+                                    valid = true;
+                                    break;
+                                }
+                            }
+                        }
                     }
+                    if valid {
+                        //Check for deadline violation
+                        if start > task.deadline {
+                            warn!("Deadline violation for task {:?}: {:?}", task.task.name, start.duration_since(task.deadline));
+                        }
 
-                    //Measure drift and jitter
-                    let mut last_execute = self.last_execution.lock().await;
-                    let expected_start_time = task.release_time;
-                    let drift = now.duration_since(expected_start_time).as_millis() as f64;
-                    let jitter = last_execute.iter()
-                        .find(|(name, _)| *name == task.name)
-                        .map(|(_, last_time)| (now.duration_since(*last_time).as_millis() as f64 - task.period.as_millis() as f64).abs())
-                        .unwrap_or(0.0);
-                    last_execute.retain(|(name, _)| *name != task.name);
-                    last_execute.push((task.name.clone(), now));
-                    info!("Task {:?}: Drift {}ms, Jitter {}ms", task.name, drift, jitter);
 
-                    //check for preemption
-                    info!("Executing task: {:?}", task.name);
-                    let task_start_time = Instant::now();
-                    let (data, command) = task.execute().await;
-                    let execution_time = Instant::now().duration_since(task_start_time);
-                    info!("{:?} completed", task.name);
-                    *self.active_time.lock().await += execution_time;
-
-                    //CPU utilization
-                    let total_time = Instant::now().duration_since(start_time);
-                    let active = *self.active_time.lock().await;
-                    let utilization = (active.as_secs_f64() / total_time.as_secs_f64()) * 100.0;
-                    info!("CPU utilization: {}%", utilization);
-
-                    match command{
-                        Some(command) => {self.preempt(command).await}
-                        None => {}
+                        let (data, command) = task.execute().await;
                     }
-
-
-                    //pass data to downlink
-
                 }
                 None => {}
             }
-
         }
     }
 }
+    

@@ -70,7 +70,7 @@ impl Sensor{
     pub fn spawn(mut self, buffer: Arc<PrioritizedBuffer>){
         tokio::spawn(async move {
             let clock = Clock::new();
-            let now = tokio::time::Instant::now();
+            let now = Instant::now();
             let mut interval = tokio::time::interval_at(now + Duration::from_millis(self.interval_ms), Duration::from_millis(self.interval_ms));
             let mut rng = rand::rngs::StdRng::seed_from_u64(42);
             let start_time = clock.now();

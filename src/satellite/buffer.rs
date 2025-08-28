@@ -47,4 +47,13 @@ impl PrioritizedBuffer {
     pub async fn pop(&self) -> Option<SensorData> {
         self.heap.lock().await.pop()
     }
+    
+    pub async fn is_empty(&self) -> bool {
+        self.heap.lock().await.is_empty()
+    }
+    
+    pub async fn clear(&self) {
+        self.heap.lock().await.clear();
+    }
+    
 }

@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
-use tokio::time::{Duration,Instant};
+use tokio::time::{Duration};
 use crate::satellite::command::Command;
 use crate::satellite::sensor::{SensorData, SensorPayloadDataType};
 use log::{info,warn};
 use serde::{Deserialize, Serialize};
+use quanta::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskName {
@@ -13,20 +14,37 @@ pub enum TaskName {
     ThermalControl,
 }
 #[derive(Debug, Clone)]
-pub struct Task {
-    pub name: TaskName,
-    pub period: Duration, // task execution time need
+pub struct Task{
+    pub task: TaskType,
     pub release_time: Instant, // When task becomes ready
     pub deadline: Instant, // Absolute deadline
     pub data: Option<SensorData>,
     pub priority: u8,
 }
 
+#[derive(Debug, Clone)]
+pub struct TaskType {
+    pub name: TaskName,
+    pub interval_ms: Option<u64>,
+    pub process_time: Duration
+}
+
+impl TaskType{
+    pub fn new(name: TaskName, interval_ms: Option<u64>, process_time: Duration) -> TaskType{
+        TaskType{
+            name,
+            interval_ms,
+            process_time,
+        }
+    }
+}
+
+
 impl Task {
     pub async fn execute(&self) -> (Option<SensorData>, Option<Command>){
         let mut command = None;
         if let Some(data) = self.data.clone(){
-            match self.name{
+            match self.task.name{
                 TaskName::HealthMonitoring => {
                     //info!("Health Monitoring processing data");
                     match data.data{
@@ -41,15 +59,15 @@ impl Task {
                     (Some(data), command)
                 },
                 TaskName::SpaceWeatherMonitoring => {
-                    //info!("Image Processing processing data");
+                    info!("Image Processing processing data");
                     (Some(data), command)
                 },
                 TaskName::AntennaAlignment => {
-                    //info!("Antenna Alignment processing data");
+                    info!("Antenna Alignment processing data");
                     (Some(data), command)
                 }
                 TaskName::ThermalControl => {
-                    //info!("Thermal Control reducing power usage");
+                    info!("Thermal Control reducing power usage");
                     (None, command)
                 }
             }
