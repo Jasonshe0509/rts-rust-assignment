@@ -1,7 +1,8 @@
 
 mod command;
 mod task;
-mod sensor;
+pub mod sensor;
 mod scheduler;
 mod buffer;
-mod downlink;
+pub mod downlink;
+pub mod fault_message;
