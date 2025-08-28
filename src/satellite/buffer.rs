@@ -3,6 +3,7 @@ use crate::satellite::sensor::SensorData;
 use tokio::sync::Mutex;
 use std::time::Instant;
 use chrono::{DateTime, Utc};
+use log::{info, warn};
 
 pub struct PrioritizedBuffer {
     capacity: usize,
@@ -25,11 +26,12 @@ impl PrioritizedBuffer {
                 if data.priority <= highest.priority {
                     // Drop new data if its priority is lower
                     // Data loss
-                    return Err(format!("Buffer full, {:?} data loss",data.sensor_type));
+                    warn!("Buffer full, {:?} data loss",data.sensor_type);
+                    return Err("data loss".to_string());
                 } else {
                     // Data drop
                     let dropped_data = heap.pop().unwrap();
-                    return Err(format!("Buffer full, {:?} data dropped",dropped_data.sensor_type));
+                    warn!("Buffer full, {:?} data dropped",dropped_data.sensor_type);
                 }
             }
         }
@@ -40,7 +42,7 @@ impl PrioritizedBuffer {
         //Latency
         let buffer_timestamp = Utc::now();
         let latency = buffer_timestamp.signed_duration_since(data_timestamp).num_microseconds().unwrap() as f64 / 1000.0;
-        log::info!("Buffer insertion latency for {:?}: {}ms", data_sensor, latency);
+        info!("Buffer insertion latency for {:?}: {}ms", data_sensor, latency);
         Ok(())
     }
 
