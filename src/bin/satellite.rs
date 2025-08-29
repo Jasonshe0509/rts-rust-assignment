@@ -27,16 +27,16 @@ async fn main(){
     let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring, Some(2000), Duration::from_millis(1000));
     let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment, Some(3000), Duration::from_millis(1500));
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
-    
+
     
     let scheduler_command:Arc<Mutex<Option<SchedulerCommand>>> = Arc::new(Mutex::new(None));
     let telemetry_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let radiation_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let antenna_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
-    
+
     //initialize downlink buffer & transmission queue
-    let downlink_buffer = Arc::new(FifoQueue::new(100));
-    let transmission_queue = Arc::new(FifoQueue::new(100));
+    let downlink_buffer = Arc::new(FifoQueue::new(20));
+    let transmission_queue = Arc::new(FifoQueue::new(50));
 
     //initialize task scheduler
     let scheduler = Scheduler::new(sensor_buffer.clone(),downlink_buffer.clone(),task_to_schedule);
@@ -50,7 +50,7 @@ async fn main(){
 
     //initialize downlink
     let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel,"telemetry_queue".to_string());
-    
+
     telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone());
     radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone());
     antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone());
@@ -60,7 +60,10 @@ async fn main(){
         scheduler.execute_task(scheduler_command.clone(),telemetry_sensor_command.clone(),
                                radiation_sensor_command.clone(), antenna_sensor_command.clone()).await;
     });
-    
+
+    downlink.start_window_controller(5000);
+    downlink.process_data();
+    downlink.send_data();
 
     tokio::time::sleep(Duration::from_secs(20)).await;
     

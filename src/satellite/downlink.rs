@@ -99,86 +99,98 @@ impl Downlink {
         });
     }
 
-    pub async fn process_data(&self) {
-        let mut telemetry_data_counter = 0;
-        let mut radiation_data_counter = 0;
-        let mut antenna_data_counter = 0;
-        let mut fault_data_counter = 0;
-        let clock = Clock::new();
-        loop{
-            if let Some(data) = self.downlink_buffer.pop().await{
-                let before_queue = clock.now();
-                let id: String;
-                match &data{
-                    TransmissionData::Sensor(sensor_data) => {
-                        id = match sensor_data.sensor_type {
-                            SensorType::OnboardTelemetrySensor => {
-                                telemetry_data_counter += 1;
-                                format!("TLI{}",telemetry_data_counter)
-                            },
-                            SensorType::RadiationSensor => {
-                                radiation_data_counter += 1;
-                                format!("RAI{}",radiation_data_counter)
-                            },
-                            SensorType::AntennaPointingSensor => {
-                                antenna_data_counter += 1;
-                                format!("ANI{}",antenna_data_counter)
-                            },
-                        };
+    pub fn process_data(&self) {
+        let downlink_buffer = self.downlink_buffer.clone();
+        let transmission_queue = self.transmission_queue.clone();
+        let expected_window_open_time = self.expected_window_open_time.clone();
+        tokio::spawn(async move {
+            let mut telemetry_data_counter = 0;
+            let mut radiation_data_counter = 0;
+            let mut antenna_data_counter = 0;
+            let mut fault_data_counter = 0;
+            let clock = Clock::new();
+            loop {
+                if let Some(data) = downlink_buffer.pop().await {
+                    let before_queue = clock.now();
+                    let id: String;
+                    match &data {
+                        TransmissionData::Sensor(sensor_data) => {
+                            id = match sensor_data.sensor_type {
+                                SensorType::OnboardTelemetrySensor => {
+                                    telemetry_data_counter += 1;
+                                    format!("TLI{}", telemetry_data_counter)
+                                },
+                                SensorType::RadiationSensor => {
+                                    radiation_data_counter += 1;
+                                    format!("RAI{}", radiation_data_counter)
+                                },
+                                SensorType::AntennaPointingSensor => {
+                                    antenna_data_counter += 1;
+                                    format!("ANI{}", antenna_data_counter)
+                                },
+                            };
+                        }
+                        TransmissionData::Fault(fault_data) => {
+                            fault_data_counter += 1;
+                            id = format!("FMI{}", fault_data_counter);
+                        }
                     }
-                    TransmissionData::Fault(fault_data) => {
-                        fault_data_counter += 1;
-                        id = format!("FMI{}",fault_data_counter);
+                    let compress_sensor_data = Compressor::compress(&data);
+
+
+                    let packet = PacketizeData::new(id, expected_window_open_time.lock().await.clone(),
+                                                    compress_sensor_data.len() as f64, compress_sensor_data);
+
+                    let compress_packet = Compressor::compress(&packet);
+
+                    transmission_queue.push(compress_packet).await;
+
+                    //transmission queue latency
+                    let latency = clock.now().duration_since(before_queue).as_millis() as f64;
+                    info!("Packet insert to transmission queue latency: {}ms",latency);
+
+                    //buffer fill rate
+                    let buffer_len = downlink_buffer.len().await;
+                    let buffer_capacity = downlink_buffer.capacity;
+                    let fill_rate = (buffer_len as f64 / buffer_capacity as f64) * 100.0;
+                    info!("Downlink buffer fill rate: {:2}%",fill_rate);
+                    if fill_rate > 80.0 {
+                        warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
+
                     }
-                }
-                let compress_sensor_data = Compressor::compress(&data);
-
-                
-                let packet = PacketizeData::new(id, self.expected_window_open_time.lock().await.clone(),
-                                                compress_sensor_data.len() as f64, compress_sensor_data);
-
-                let compress_packet = Compressor::compress(&packet);
-                
-                self.transmission_queue.push(compress_packet).await;
-
-                //transmission queue latency
-                let latency = clock.now().duration_since(before_queue).as_millis() as f64;
-                info!("Packet insert to transmission queue latency: {}ms",latency);
-
-                //buffer fill rate
-                let buffer_len = self.downlink_buffer.len().await;
-                let buffer_capacity = self.downlink_buffer.capacity;
-                let fill_rate = (buffer_len as f64 / buffer_capacity as f64) * 100.0;
-                info!("Downlink buffer fill rate: {:2}%",fill_rate);
-                if fill_rate > 80.0 {
-                    warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
-
+                    tokio::time::sleep(Duration::from_millis(5000)).await;
                 }
             }
-        }
+        });
     }
 
-    pub async fn send_data(&self) {
-        loop{
-            if self.window.load(Ordering::SeqCst) {
-                if let Some(packet) = self.transmission_queue.pop().await{
-                    let msg = packet.as_slice();
-                    if let Err(e) = self.channel.basic_publish(
-                        "",
-                        &self.downlink_queue_name,
-                        BasicPublishOptions::default(),
-                        msg,
-                        BasicProperties::default().with_timestamp(Utc::now().timestamp() as u64),
-                    ).await {
-                        error!("Error sending data: {}",e);
-                    }else{
-                        info!("Message sent");
+    pub fn send_data(&self) {
+        let transmission_queue = self.transmission_queue.clone();
+        let window = self.window.clone();
+        let downlink_queue_name = self.downlink_queue_name.clone();
+        let channel = self.channel.clone();
+        
+        tokio::spawn(async move {
+            loop {
+                if window.load(Ordering::SeqCst) {
+                    if let Some(packet) = transmission_queue.pop().await {
+                        let msg = packet.as_slice();
+                        if let Err(e) = channel.basic_publish(
+                            "",
+                            &downlink_queue_name,
+                            BasicPublishOptions::default(),
+                            msg,
+                            BasicProperties::default().with_timestamp(Utc::now().timestamp() as u64),
+                        ).await {
+                            error!("Error sending data: {}",e);
+                        } else {
+                            info!("Message sent");
+                        }
                     }
                 }
+
             }
-            
-        }
-        
+        });
     }
 
 }
