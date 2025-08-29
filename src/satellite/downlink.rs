@@ -43,7 +43,7 @@ impl PacketizeData {
 
 pub struct Downlink{
     downlink_buffer: Arc<FifoQueue<TransmissionData>>,
-    transmission_queue: Arc<FifoQueue<PacketizeData>>,
+    transmission_queue: Arc<FifoQueue<Vec<u8>>>,
     channel: Channel,
     downlink_queue_name: String,
     window: Arc<AtomicBool>,
@@ -51,7 +51,7 @@ pub struct Downlink{
 }
 
 impl Downlink {
-    pub fn new(buffer: Arc<FifoQueue<TransmissionData>>, transmit_queue: Arc<FifoQueue<PacketizeData>>, downlink_channel: Channel,queue_name:String) -> Self {
+    pub fn new(buffer: Arc<FifoQueue<TransmissionData>>, transmit_queue: Arc<FifoQueue<Vec<u8>>>, downlink_channel: Channel,queue_name:String) -> Self {
         Self {
             downlink_buffer:buffer,
             transmission_queue: transmit_queue,
@@ -137,12 +137,14 @@ impl Downlink {
                 let packet = PacketizeData::new(id, self.expected_window_open_time.lock().await.clone(),
                                                 compress_sensor_data.len() as f64, compress_sensor_data);
 
-                self.transmission_queue.push(packet).await;
+                let compress_packet = Compressor::compress(&packet);
                 
+                self.transmission_queue.push(compress_packet).await;
+
                 //transmission queue latency
                 let latency = clock.now().duration_since(before_queue).as_millis() as f64;
                 info!("Packet insert to transmission queue latency: {}ms",latency);
-                
+
                 //buffer fill rate
                 let buffer_len = self.downlink_buffer.len().await;
                 let buffer_capacity = self.downlink_buffer.capacity;
@@ -150,13 +152,32 @@ impl Downlink {
                 info!("Downlink buffer fill rate: {:2}%",fill_rate);
                 if fill_rate > 80.0 {
                     warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
-                    
+
                 }
             }
         }
     }
 
     pub async fn send_data(&self) {
+        loop{
+            if self.window.load(Ordering::SeqCst) {
+                if let Some(packet) = self.transmission_queue.pop().await{
+                    let msg = packet.as_slice();
+                    if let Err(e) = self.channel.basic_publish(
+                        "",
+                        &self.downlink_queue_name,
+                        BasicPublishOptions::default(),
+                        msg,
+                        BasicProperties::default().with_timestamp(Utc::now().timestamp() as u64),
+                    ).await {
+                        error!("Error sending data: {}",e);
+                    }else{
+                        info!("Message sent");
+                    }
+                }
+            }
+            
+        }
         
     }
 
