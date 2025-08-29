@@ -32,8 +32,9 @@ impl Scheduler {
             SchedulerCommand::TC => {
                 let new_task = Task {
                     task: TaskType::new(TaskName::ThermalControl,None, Duration::from_millis(500)),
-                    release_time: now,
-                    deadline: now + Duration::from_millis(500),
+                    schedule_time: now,
+                    start_time: None,
+                    deadline: None,
                     data: None,
                     priority: 5,
                 };
@@ -43,8 +44,9 @@ impl Scheduler {
             SchedulerCommand::SM => {
                 let new_task = Task {
                     task: TaskType::new(TaskName::SafeModeActivation,None, Duration::from_millis(300)),
-                    release_time: now,
-                    deadline: now + Duration::from_millis(500),
+                    schedule_time: now,
+                    start_time: None,
+                    deadline: None,
                     data: None,
                     priority: 5,
                 };
@@ -54,8 +56,9 @@ impl Scheduler {
             SchedulerCommand::SO => {
                 let new_task = Task {
                     task: TaskType::new(TaskName::SignalOptimization,None, Duration::from_millis(200)),
-                    release_time: now,
-                    deadline: now + Duration::from_millis(500),
+                    schedule_time: now,
+                    start_time: None,
+                    deadline: None,
                     data: None,
                     priority: 5,
                 };
@@ -63,7 +66,7 @@ impl Scheduler {
                 info!("Preempted Signal Optimization Task");
             }
         }
-        
+
     }
 
     pub fn schedule_task(&self) {
@@ -84,8 +87,9 @@ impl Scheduler {
                     expected_tick += Duration::from_millis(task_type.interval_ms.unwrap());
                     let new_task = Task {
                         task: task_type.clone(),
-                        release_time: now,
-                        deadline: now + task_type.process_time,
+                        schedule_time: actual,
+                        start_time: None,
+                        deadline: None,
                         data: None,
                         priority: 1
                     };
@@ -95,8 +99,8 @@ impl Scheduler {
         }
     }
 
-    pub async fn execute_task(&self, execution_command: Arc<Mutex<Option<SchedulerCommand>>>, 
-    telemetry_command: Arc<Mutex<SensorCommand>>, radiation_command: Arc<Mutex<SensorCommand>>, 
+    pub async fn execute_task(&self, execution_command: Arc<Mutex<Option<SchedulerCommand>>>,
+    telemetry_command: Arc<Mutex<SensorCommand>>, radiation_command: Arc<Mutex<SensorCommand>>,
                               antenna_command: Arc<Mutex<SensorCommand>>) {
         let clock = Clock::new();
         loop {
@@ -108,87 +112,27 @@ impl Scheduler {
             }
             if let Some(mut task) = self.task_queue.lock().await.pop() {
                 let start = clock.now();
-                task.release_time = start;
-                task.deadline = start + task.task.process_time;
-                let mut valid = false;
-
-                //Check for deadline violation
-                if clock.now() > task.release_time {
-                    warn!("Start delay for task {:?}: {:?}", task.task.name, clock.now().duration_since(task.release_time));
-                }
-                loop {
-                    let read_data_time = clock.now().duration_since(task.release_time);
-                    if read_data_time > Duration::from_millis(10) {
-                        warn!("{:?} task terminate due to data reading time exceed. \
-                        Sensor data for task not received. Priority of data adjust to be increased.", task.task.name);
-                        match task.task.name {
-                            TaskName::AntennaAlignment => {
-                                *(antenna_command.lock().await) = SensorCommand::IP;
-                            }
-                            TaskName::HealthMonitoring => {
-                                *(telemetry_command.lock().await) = SensorCommand::IP;
-                            }
-                            TaskName::SpaceWeatherMonitoring => {
-                                *(radiation_command.lock().await) = SensorCommand::IP;
-                            }
-                            _ => {}
-                        }
-                        break;
+                task.start_time = Some(start);
+                task.deadline = Some(start + task.task.process_time);
+                match task.task.name {
+                    TaskName::HealthMonitoring => {
+                        let data = task.execute(self.sensor_buffer.clone(), 
+                                                execution_command.clone(), Some(telemetry_command.clone())).await;
                     }
-                    if !self.sensor_buffer.is_empty().await {
-                        let sensor_data = self.sensor_buffer.pop().await.unwrap();
-
-                        match task.task.name {
-                            TaskName::AntennaAlignment => {
-                                if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
-                                    task.data = Some(sensor_data);
-                                    valid = true;
-                                    break;
-                                }
-                            }
-                            TaskName::HealthMonitoring => {
-                                if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
-                                    task.data = Some(sensor_data);
-                                    valid = true;
-                                    break;
-                                }
-                            }
-                            TaskName::SpaceWeatherMonitoring => {
-                                if sensor_data.sensor_type == SensorType::RadiationSensor {
-                                    task.data = Some(sensor_data);
-                                    valid = true;
-                                    break;
-                                }
-                            }
-                            _ => {
-                                valid = true;
-                                break;
-                            }
-                        }
+                    TaskName::SpaceWeatherMonitoring => {
+                        let data = task.execute(self.sensor_buffer.clone(),
+                                                execution_command.clone(), Some(radiation_command.clone())).await;
                     }
-                }
-                if valid {
-                    let data = task.execute(execution_command.clone()).await;
-                    if clock.now() > task.deadline {
-                        warn!("Completion delay for task {:?}: {:?}", task.task.name, start.duration_since(task.deadline));
+                    TaskName::AntennaAlignment => {
+                        let data = task.execute(self.sensor_buffer.clone(),
+                                                execution_command.clone(), Some(antenna_command.clone())).await;
                     }
-                    match task.task.name {
-                        TaskName::AntennaAlignment => {
-                            *(antenna_command.lock().await) = SensorCommand::NP;
-                        }
-                        TaskName::HealthMonitoring => {
-                            *(telemetry_command.lock().await) = SensorCommand::NP;
-                        }
-                        TaskName::SpaceWeatherMonitoring => {
-                            *(radiation_command.lock().await) = SensorCommand::NP;
-                        }
-                        _ => {}
+                    _ => {
+                        let data = task.execute(self.sensor_buffer.clone(),
+                                                execution_command.clone(), None).await;
                     }
-                    self.sensor_buffer.clear().await; //clear buffer once a task completed to keep data updated
-                    info!("Task {:?} completed, buffer clear", task.task.name);
                 }
             }
         }
     }
 }
-    
