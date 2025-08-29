@@ -9,6 +9,7 @@ use quanta::{Instant, Clock};
 use tokio::sync::Mutex;
 use crate::satellite::buffer::PrioritizedBuffer;
 
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskName {
     HealthMonitoring,
@@ -118,7 +119,8 @@ impl Task {
                     SensorPayloadDataType::TelemetryData { power, temperature, location } => {
                         if temperature > 105.0 {
                             warn!("Temperature is too high, thermal control needed");
-                            *execution_command.lock().await = Some(SchedulerCommand::TC);
+                            *execution_command.lock().await = Some(SchedulerCommand::TC
+                                (TaskType::new(TaskName::ThermalControl,None,Duration::from_millis(500))));
                         }
                     }
                     _ => ()
@@ -130,7 +132,8 @@ impl Task {
                     SensorPayloadDataType::RadiationData { proton_flux, solar_radiation_level, total_ionizing_doze } => {
                         if proton_flux > 100000.0 {
                             warn!("Solar storm detected, safe mode activation needed");
-                            *execution_command.lock().await = Some(SchedulerCommand::SM);
+                            *execution_command.lock().await = Some(SchedulerCommand::SM
+                                (TaskType::new(TaskName::SafeModeActivation,None,Duration::from_millis(300))));
                         }
                     }
                     _ => ()
@@ -142,7 +145,8 @@ impl Task {
                     SensorPayloadDataType::AntennaData { azimuth, elevation, polarization } => {
                         if polarization < 0.2 {
                             warn!("Weak signal strength, signal optimization needed");
-                            *execution_command.lock().await = Some(SchedulerCommand::SO);
+                            *execution_command.lock().await = Some(SchedulerCommand::SO
+                                (TaskType::new(TaskName::SignalOptimization,None,Duration::from_millis(200))));
                         }
                     }
                     _ => ()

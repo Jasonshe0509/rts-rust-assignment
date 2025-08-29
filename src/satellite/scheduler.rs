@@ -29,9 +29,9 @@ impl Scheduler {
         let clock = Clock::new();
         let now = clock.now();
         match command {
-            SchedulerCommand::TC => {
+            SchedulerCommand::TC(task_type) => {
                 let new_task = Task {
-                    task: TaskType::new(TaskName::ThermalControl,None, Duration::from_millis(500)),
+                    task: task_type,
                     schedule_time: now,
                     start_time: None,
                     deadline: None,
@@ -41,9 +41,9 @@ impl Scheduler {
                 self.task_queue.lock().await.push(new_task);
                 info!("Preempted Thermal Control Task");
             }
-            SchedulerCommand::SM => {
+            SchedulerCommand::SM(task_type) => {
                 let new_task = Task {
-                    task: TaskType::new(TaskName::SafeModeActivation,None, Duration::from_millis(300)),
+                    task: task_type,
                     schedule_time: now,
                     start_time: None,
                     deadline: None,
@@ -53,9 +53,9 @@ impl Scheduler {
                 self.task_queue.lock().await.push(new_task);
                 info!("Preempted Safe Mode Activation Task");
             }
-            SchedulerCommand::SO => {
+            SchedulerCommand::SO(task_type) => {
                 let new_task = Task {
-                    task: TaskType::new(TaskName::SignalOptimization,None, Duration::from_millis(200)),
+                    task: task_type,
                     schedule_time: now,
                     start_time: None,
                     deadline: None,
@@ -82,7 +82,7 @@ impl Scheduler {
                 loop {
                     interval.tick().await;
                     let actual = clock.now();
-                    let drift = actual.duration_since(expected_tick);
+                    let drift = actual.duration_since(expected_tick).as_millis() as f64;
                     info!("Task {:?} scheduled at {:?} with drift {:?}", task_type.name, actual, drift);
                     expected_tick += Duration::from_millis(task_type.interval_ms.unwrap());
                     let new_task = Task {

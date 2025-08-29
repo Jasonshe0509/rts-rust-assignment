@@ -1,7 +1,6 @@
 use min_max_heap::MinMaxHeap;
 use crate::satellite::sensor::SensorData;
 use tokio::sync::Mutex;
-use std::time::Instant;
 use chrono::{DateTime, Utc};
 use log::{info, warn};
 

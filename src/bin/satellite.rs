@@ -1,5 +1,6 @@
 use std::collections::BinaryHeap;
 use std::sync::Arc;
+use lapin::{Connection, ConnectionProperties};
 use tokio::sync::Mutex;
 use rts_rust_assignment::satellite::buffer::PrioritizedBuffer;
 use rts_rust_assignment::satellite::sensor::{Sensor, SensorType};
@@ -32,6 +33,13 @@ async fn main(){
     let telemetry_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let radiation_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let antenna_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
+    
+    //initialize communication channel
+    let conn = Connection::connect("amqp://127.0.0.1:5672//",ConnectionProperties::default()).await
+        .expect("Cannot connect to RabbitMQ");
+    
+    let channel = conn.create_channel().await
+        .expect("Cannot create channel");
 
     telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone());
     radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone());

@@ -90,7 +90,7 @@ impl Sensor{
                 
 
                 //drift
-                let drift = actual_tick_time.duration_since(expected_next_tick).as_secs_f64() * 1000.0;
+                let drift = actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
                 info!("{:?} data acquisition drift: {}ms", self.sensor_type,drift);
                 expected_next_tick += Duration::from_millis(self.interval_ms);
 
