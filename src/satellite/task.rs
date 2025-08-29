@@ -76,31 +76,29 @@ impl Task {
                     //*(sensor_command.lock().await) = SensorCommand::IP;
                     return None
                 }
-                if !buffer.is_empty().await {
-                    //info!("Buffer len: {}", buffer.len().await);
-                    let sensor_data = buffer.pop().await.unwrap();
-                    match self.task.name {
-                        TaskName::AntennaAlignment => {
-                            if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
-                                self.data = Some(sensor_data);
-                                break;
-                            }
-                        }
-                        TaskName::HealthMonitoring => {
-                            if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
-                                self.data = Some(sensor_data);
-                                break;
-                            }
-                        }
-                        TaskName::SpaceWeatherMonitoring => {
-                            if sensor_data.sensor_type == SensorType::RadiationSensor {
-                                self.data = Some(sensor_data);
-                                break;
-                            }
-                        }
-                        _ => {
+                //info!("Buffer len: {}", buffer.len().await);
+                let sensor_data = buffer.pop().await.unwrap();
+                match self.task.name {
+                    TaskName::AntennaAlignment => {
+                        if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
+                            self.data = Some(sensor_data);
                             break;
                         }
+                    }
+                    TaskName::HealthMonitoring => {
+                        if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
+                            self.data = Some(sensor_data);
+                            break;
+                        }
+                    }
+                    TaskName::SpaceWeatherMonitoring => {
+                        if sensor_data.sensor_type == SensorType::RadiationSensor {
+                            self.data = Some(sensor_data);
+                            break;
+                        }
+                    }
+                    _ => {
+                        break;
                     }
                 }
             }

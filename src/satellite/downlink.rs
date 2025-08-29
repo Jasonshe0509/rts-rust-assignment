@@ -3,9 +3,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::time::{Duration, Instant};
 use crate::satellite::sensor::{SensorData, SensorPayloadDataType, SensorType};
-use crate::satellite::buffer::PrioritizedBuffer;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::SystemTime;
 use lapin::{BasicProperties, Channel};
 use lapin::options::BasicPublishOptions;
 use tokio::sync::Mutex;
@@ -13,19 +13,15 @@ use log::{info, error,warn};
 use quanta::Clock;
 use crate::util::compressor::Compressor;
 use crate::satellite::fault_message::FaultMessageData;
+use crate::satellite::FIFO_queue::FifoQueue;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransmissionDataType {
-    Fault,
-    Sensor,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransmissionData {
+    Fault(FaultMessageData),
+    Sensor(SensorData),
 }
 
-#[derive(Debug, Clone)]
-pub struct TransmissionData{
-    data_type: TransmissionDataType,
-    sensor_data: Option<SensorData>,
-    fault_message_data: Option<FaultMessageData>,
-}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PacketizeData {
     pub packet_id: String,
@@ -45,36 +41,46 @@ impl PacketizeData {
     }
 }
 
-struct Downlink{
-    downlink_buffer: Arc<PrioritizedBuffer>,
-    transmission_queue: Arc<Mutex<VecDeque<PacketizeData>>>,
+pub struct Downlink{
+    downlink_buffer: Arc<FifoQueue<TransmissionData>>,
+    transmission_queue: Arc<FifoQueue<PacketizeData>>,
     channel: Channel,
     downlink_queue_name: String,
-    window: Arc<AtomicBool>
+    window: Arc<AtomicBool>,
+    expected_window_open_time: Arc<Mutex<DateTime<Utc>>>,
 }
 
 impl Downlink {
-    pub fn new(buffer: Arc<PrioritizedBuffer>, downlink_channel: Channel,queue_name:String) -> Self {
+    pub fn new(buffer: Arc<FifoQueue<TransmissionData>>, transmit_queue: Arc<FifoQueue<PacketizeData>>, downlink_channel: Channel,queue_name:String) -> Self {
         Self {
             downlink_buffer:buffer,
-            transmission_queue: Arc::new(Mutex::new(VecDeque::new())),
+            transmission_queue: transmit_queue,
             channel: downlink_channel,
             downlink_queue_name: queue_name,
-            window: Arc::new(AtomicBool::new(false))
+            window: Arc::new(AtomicBool::new(false)),
+            expected_window_open_time: Arc::new(Mutex::new(DateTime::from(Utc::now()))),
         }
     }
 
     pub fn start_window_controller(&self, interval_ms: u64) {
         let window = self.window.clone();
+        let expected_window_open_time = self.expected_window_open_time.clone();
         tokio::spawn(async move {
             let now = Instant::now();
             let clock = Clock::new();
             let mut interval = tokio::time::interval_at(now + Duration::from_millis(interval_ms), Duration::from_millis(interval_ms));
             let start_time = clock.now();
             let mut expected_next_tick = start_time + Duration::from_millis(interval_ms);
+            let mut system_time = SystemTime::now() + Duration::from_millis(interval_ms);
+            let mut datetime_utc = system_time.into();
+            *expected_window_open_time.lock().await = datetime_utc;
             loop {
                 interval.tick().await;
                 let actual_start_time = clock.now();
+
+                system_time = SystemTime::now() + Duration::from_millis(interval_ms);
+                datetime_utc = system_time.into();
+                *expected_window_open_time.lock().await = datetime_utc;
 
                 window.store(true, Ordering::SeqCst);
                 info!("Downlink Window Opened");
@@ -98,26 +104,60 @@ impl Downlink {
         let mut radiation_data_counter = 0;
         let mut antenna_data_counter = 0;
         let mut fault_data_counter = 0;
+        let clock = Clock::new();
         loop{
             if let Some(data) = self.downlink_buffer.pop().await{
+                let before_queue = clock.now();
+                let id: String;
+                match &data{
+                    TransmissionData::Sensor(sensor_data) => {
+                        id = match sensor_data.sensor_type {
+                            SensorType::OnboardTelemetrySensor => {
+                                telemetry_data_counter += 1;
+                                format!("TLI{}",telemetry_data_counter)
+                            },
+                            SensorType::RadiationSensor => {
+                                radiation_data_counter += 1;
+                                format!("RAI{}",radiation_data_counter)
+                            },
+                            SensorType::AntennaPointingSensor => {
+                                antenna_data_counter += 1;
+                                format!("ANI{}",antenna_data_counter)
+                            },
+                        };
+                    }
+                    TransmissionData::Fault(fault_data) => {
+                        fault_data_counter += 1;
+                        id = format!("FMI{}",fault_data_counter);
+                    }
+                }
                 let compress_sensor_data = Compressor::compress(&data);
+
                 
+                let packet = PacketizeData::new(id, self.expected_window_open_time.lock().await.clone(),
+                                                compress_sensor_data.len() as f64, compress_sensor_data);
+
+                self.transmission_queue.push(packet).await;
                 
+                //transmission queue latency
+                let latency = clock.now().duration_since(before_queue).as_millis() as f64;
+                info!("Packet insert to transmission queue latency: {}ms",latency);
                 
-                let prefix = match data.sensor_type {
-                    SensorType::OnboardTelemetrySensor => "TLI",
-                    SensorType::RadiationSensor => "RAI",
-                    SensorType::AntennaPointingSensor => "ANI",
-                };
-                
-                
-                //let packet = PacketizeData::new()
+                //buffer fill rate
+                let buffer_len = self.downlink_buffer.len().await;
+                let buffer_capacity = self.downlink_buffer.capacity;
+                let fill_rate = (buffer_len as f64 / buffer_capacity as f64) * 100.0;
+                info!("Downlink buffer fill rate: {:2}%",fill_rate);
+                if fill_rate > 80.0 {
+                    warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
+                    
+                }
             }
         }
     }
 
     pub async fn send_data(&self) {
-
+        
     }
 
 }

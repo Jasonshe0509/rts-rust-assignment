@@ -1,4 +1,3 @@
-use std::collections::BinaryHeap;
 use std::sync::Arc;
 use lapin::{Connection, ConnectionProperties};
 use tokio::sync::Mutex;
@@ -8,6 +7,9 @@ use tokio::time::Duration;
 use rts_rust_assignment::satellite::task::{Task, TaskName, TaskType};
 use rts_rust_assignment::satellite::scheduler::Scheduler;
 use rts_rust_assignment::satellite::command::{SchedulerCommand,SensorCommand};
+use rts_rust_assignment::satellite::downlink::TransmissionData;
+use rts_rust_assignment::satellite::FIFO_queue::FifoQueue;
+use rts_rust_assignment::satellite::downlink::Downlink;
 
 #[tokio::main]
 async fn main(){
@@ -25,14 +27,19 @@ async fn main(){
     let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring, Some(2000), Duration::from_millis(1000));
     let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment, Some(3000), Duration::from_millis(1500));
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
-
-    //initialize task scheduler
-    let scheduler = Scheduler::new(sensor_buffer.clone(),task_to_schedule);
+    
     
     let scheduler_command:Arc<Mutex<Option<SchedulerCommand>>> = Arc::new(Mutex::new(None));
     let telemetry_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let radiation_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let antenna_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
+    
+    //initialize downlink buffer & transmission queue
+    let downlink_buffer = Arc::new(FifoQueue::new(100));
+    let transmission_queue = Arc::new(FifoQueue::new(100));
+
+    //initialize task scheduler
+    let scheduler = Scheduler::new(sensor_buffer.clone(),downlink_buffer.clone(),task_to_schedule);
     
     //initialize communication channel
     let conn = Connection::connect("amqp://127.0.0.1:5672//",ConnectionProperties::default()).await
@@ -41,6 +48,9 @@ async fn main(){
     let channel = conn.create_channel().await
         .expect("Cannot create channel");
 
+    //initialize downlink
+    let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel,"telemetry_queue".to_string());
+    
     telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone());
     radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone());
     antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone());

@@ -7,19 +7,23 @@ use log::{info, log, warn};
 use std::collections::BinaryHeap;
 use quanta::Clock;
 use tokio::sync::Mutex;
+use crate::satellite::downlink::TransmissionData;
+use crate::satellite::FIFO_queue::FifoQueue;
 use crate::satellite::sensor::{Sensor, SensorData, SensorType};
 
 
 pub struct Scheduler{
     sensor_buffer: Arc<PrioritizedBuffer>,
+    downlink_buffer: Arc<FifoQueue<TransmissionData>>,
     task_queue: Arc<Mutex<BinaryHeap<Task>>>,
     tasks: Vec<TaskType>,
 }
 
 impl Scheduler {
-    pub fn new(buffer: Arc<PrioritizedBuffer>, tasks_list: Vec<TaskType>) -> Self {
+    pub fn new(s_buffer: Arc<PrioritizedBuffer>, d_buffer:  Arc<FifoQueue<TransmissionData>>,tasks_list: Vec<TaskType>) -> Self {
         Scheduler {
-            sensor_buffer: buffer,
+            sensor_buffer: s_buffer,
+            downlink_buffer: d_buffer,
             task_queue: Arc::new(Mutex::new(BinaryHeap::new())),
             tasks: tasks_list,
         }
@@ -103,6 +107,7 @@ impl Scheduler {
     telemetry_command: Arc<Mutex<SensorCommand>>, radiation_command: Arc<Mutex<SensorCommand>>,
                               antenna_command: Arc<Mutex<SensorCommand>>) {
         let task_queue = self.task_queue.clone();
+        let downlink_buffer = self.downlink_buffer.clone();
         let clock = Clock::new();
         loop {
             //Check for preemption
@@ -117,24 +122,29 @@ impl Scheduler {
                 let start = clock.now();
                 task.start_time = Some(start);
                 task.deadline = Some(start + task.task.process_time);
+                let mut data = None;
                 match task.task.name {
                     TaskName::HealthMonitoring => {
-                        let data = task.execute(self.sensor_buffer.clone(),
+                        data = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(telemetry_command.clone())).await;
                     }
                     TaskName::SpaceWeatherMonitoring => {
-                        let data = task.execute(self.sensor_buffer.clone(),
+                        data = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(radiation_command.clone())).await;
                     }
                     TaskName::AntennaAlignment => {
-                        let data = task.execute(self.sensor_buffer.clone(),
+                        data = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(antenna_command.clone())).await;
                     }
                     _ => {
-                        let data = task.execute(self.sensor_buffer.clone(),
+                        data = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), None).await;
                     }
                 }
+                if let Some(sensor_data) = data{
+                    downlink_buffer.push(TransmissionData::Sensor(sensor_data)).await;
+                }
+                
             }
         }
     }
