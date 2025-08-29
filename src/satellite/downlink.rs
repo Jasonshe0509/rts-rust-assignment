@@ -5,6 +5,8 @@ use tokio::time::Duration;
 use crate::satellite::sensor::{SensorPayloadDataType, SensorType};
 use crate::satellite::buffer::PrioritizedBuffer;
 use std::sync::Arc;
+use lapin::{BasicProperties, Channel};
+use lapin::options::BasicPublishOptions;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PacketizeData {
@@ -16,5 +18,6 @@ pub struct PacketizeData {
 
 struct Downlink{
     downlink_buffer: Arc<PrioritizedBuffer>,
-    
+    channel: Channel,
+    downlink_queue: String,
 }
