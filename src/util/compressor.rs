@@ -13,7 +13,7 @@ impl Compressor {
         encoder.finish().unwrap()
     }
 
-    pub fn decompress<T: DeserializeOwned>(data: Vec<u8>) -> T {
+    pub fn decompress<T: DeserializeOwned>(data: &Vec<u8>) -> T {
         let mut decoder = ZlibDecoder::new(&data[..]);
         let mut decompressed = Vec::new();
         decoder.read_to_end(&mut decompressed).unwrap();

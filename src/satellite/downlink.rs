@@ -6,8 +6,8 @@ use crate::satellite::sensor::{SensorPayloadDataType, SensorType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PacketizeData {
-    pub packet_id: PacketID,
-    pub queue_waiting_time_ms: u64,
+    pub packet_id: String,
+    pub expected_arrival_time: DateTime<Utc>,
     pub size: f64,
     pub data: Vec<u8>, //compressed data
 }

@@ -1,0 +1,16 @@
+[2m2025-08-29T15:25:45.839863Z[0m [32m INFO[0m [2m36:[0m About to send command: Echo
+[2m2025-08-29T15:25:45.840584Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
+[2m2025-08-29T15:25:48.831772Z[0m [32m INFO[0m [2m36:[0m About to send command: Ping
+[2m2025-08-29T15:25:48.832242Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
+[2m2025-08-29T15:25:52.851715Z[0m [32m INFO[0m [2m36:[0m About to send command: Echo
+[2m2025-08-29T15:25:52.852554Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
+[2m2025-08-29T15:25:56.835552Z[0m [32m INFO[0m [2m36:[0m About to send command: StatusCheck
+[2m2025-08-29T15:25:56.844634Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
+[2m2025-08-29T15:25:58.840644Z[0m [32m INFO[0m [2m36:[0m About to send command: Ping
+[2m2025-08-29T15:25:58.841688Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
+[2m2025-08-29T15:25:59.854795Z[0m [32m INFO[0m [2m36:[0m About to send command: Echo
+[2m2025-08-29T15:25:59.855421Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
+[2m2025-08-29T15:26:06.857666Z[0m [32m INFO[0m [2m36:[0m About to send command: Echo
+[2m2025-08-29T15:26:06.858155Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
+[2m2025-08-29T15:26:08.855083Z[0m [32m INFO[0m [2m36:[0m About to send command: Ping
+[2m2025-08-29T15:26:08.855685Z[0m [32m INFO[0m [2m30:[0m Command sent: Hi
