@@ -102,6 +102,7 @@ impl Scheduler {
     pub async fn execute_task(&self, execution_command: Arc<Mutex<Option<SchedulerCommand>>>,
     telemetry_command: Arc<Mutex<SensorCommand>>, radiation_command: Arc<Mutex<SensorCommand>>,
                               antenna_command: Arc<Mutex<SensorCommand>>) {
+        let task_queue = self.task_queue.clone();
         let clock = Clock::new();
         loop {
             //Check for preemption
@@ -109,14 +110,16 @@ impl Scheduler {
             if let Some(command) = guard.take() {
                 drop(guard);
                 self.preempt(command).await;
+            }else{
+                drop(guard);
             }
-            if let Some(mut task) = self.task_queue.lock().await.pop() {
+            if let Some(mut task) = task_queue.lock().await.pop() {
                 let start = clock.now();
                 task.start_time = Some(start);
                 task.deadline = Some(start + task.task.process_time);
                 match task.task.name {
                     TaskName::HealthMonitoring => {
-                        let data = task.execute(self.sensor_buffer.clone(), 
+                        let data = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(telemetry_command.clone())).await;
                     }
                     TaskName::SpaceWeatherMonitoring => {

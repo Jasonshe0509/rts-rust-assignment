@@ -3,6 +3,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
 use crate::satellite::sensor::{SensorPayloadDataType, SensorType};
+use crate::satellite::buffer::PrioritizedBuffer;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PacketizeData {
@@ -12,10 +14,7 @@ pub struct PacketizeData {
     pub data: Vec<u8>, //compressed data
 }
 
-#[derive(Debug, Clone, PartialEq,Serialize, Deserialize)]
-pub enum PacketID{
-    ANI, //antenna
-    RAI, //radiation
-    TLI, //telemetry
-    FMI, //fault msg
+struct Downlink{
+    downlink_buffer: Arc<PrioritizedBuffer>,
+    
 }

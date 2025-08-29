@@ -76,7 +76,7 @@ impl Task {
                     return None
                 }
                 if !buffer.is_empty().await {
-                    info!("Buffer len: {}", buffer.len().await);
+                    //info!("Buffer len: {}", buffer.len().await);
                     let sensor_data = buffer.pop().await.unwrap();
                     match self.task.name {
                         TaskName::AntennaAlignment => {
@@ -110,11 +110,11 @@ impl Task {
             //*(sensor_command.lock().await) = SensorCommand::NP;
         }
         //process data or take action
-        let data = self.data.as_ref().unwrap();
+        let data = self.data.as_ref();
         match self.task.name {
             TaskName::HealthMonitoring => {
                 info!("Monitoring health of satellite");
-                match data.data{
+                match data.unwrap().data{
                     SensorPayloadDataType::TelemetryData { power, temperature, location } => {
                         if temperature > 105.0 {
                             warn!("Temperature is too high, thermal control needed");
@@ -126,7 +126,7 @@ impl Task {
             },
             TaskName::SpaceWeatherMonitoring => {
                 info!("Monitoring Space Weather");
-                match data.data {
+                match data.unwrap().data {
                     SensorPayloadDataType::RadiationData { proton_flux, solar_radiation_level, total_ionizing_doze } => {
                         if proton_flux > 100000.0 {
                             warn!("Solar storm detected, safe mode activation needed");
@@ -138,7 +138,7 @@ impl Task {
             },
             TaskName::AntennaAlignment => {
                 info!("Aligning Antenna");
-                match data.data {
+                match data.unwrap().data {
                     SensorPayloadDataType::AntennaData { azimuth, elevation, polarization } => {
                         if polarization < 0.2 {
                             warn!("Weak signal strength, signal optimization needed");
@@ -163,7 +163,6 @@ impl Task {
         if task_actual_end_time > self.deadline.unwrap() {
             warn!("Completion delay for task {:?}: {:?}", self.task.name, task_actual_end_time.duration_since(self.deadline.unwrap()));
         }
-        info!("Task {:?} completed, buffer clear", self.task.name);
         self.data.clone()
     }
 }

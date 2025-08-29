@@ -12,7 +12,7 @@ use rts_rust_assignment::satellite::command::{SchedulerCommand,SensorCommand};
 async fn main(){
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
-    let sensor_buffer = Arc::new(PrioritizedBuffer::new(200));
+    let sensor_buffer = Arc::new(PrioritizedBuffer::new(50));
 
     //initialize sensor
     let telemetry_sensor = Sensor::new(SensorType::OnboardTelemetrySensor,500);
@@ -37,11 +37,13 @@ async fn main(){
     radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone());
     antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone());
 
-    // scheduler.schedule_task();
-    // scheduler.execute_task(scheduler_command.clone(),telemetry_sensor_command.clone(),
-    //                        radiation_sensor_command.clone(), antenna_sensor_command.clone()).await;
+    scheduler.schedule_task();
+    tokio::spawn(async move {
+        scheduler.execute_task(scheduler_command.clone(),telemetry_sensor_command.clone(),
+                               radiation_sensor_command.clone(), antenna_sensor_command.clone()).await;
+    });
     
 
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(20)).await;
     
 }
