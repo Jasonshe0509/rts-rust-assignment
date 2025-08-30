@@ -7,6 +7,7 @@ use log::{info, log, warn};
 use std::collections::BinaryHeap;
 use quanta::Clock;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use crate::satellite::downlink::TransmissionData;
 use crate::satellite::FIFO_queue::FifoQueue;
 use crate::satellite::sensor::{Sensor, SensorData, SensorType};
@@ -79,10 +80,11 @@ impl Scheduler {
 
     }
 
-    pub fn schedule_task(&self) {
+    pub fn schedule_task(&self) -> Vec<JoinHandle<()>>{
+        let mut schedule_tasks_handle = Vec::new();
         for task_type in self.tasks.iter().cloned(){
             let task_queue = self.task_queue.clone();
-            tokio::spawn(async move {
+            let h = tokio::spawn(async move {
                 let clock = Clock::new();
                 let now = clock.now();
                 let now2 = Instant::now();
@@ -108,7 +110,9 @@ impl Scheduler {
                     task_queue.lock().await.push(new_task);
                 }
             });
+            schedule_tasks_handle.push(h);
         }
+        schedule_tasks_handle
     }
 
     pub async fn execute_task(&self, execution_command: Arc<Mutex<Option<SchedulerCommand>>>,

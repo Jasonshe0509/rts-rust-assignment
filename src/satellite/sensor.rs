@@ -9,6 +9,7 @@ use rand::{Rng, SeedableRng};
 use tokio::time::{interval, Duration,Instant};
 use tokio::sync::Mutex;
 use quanta::Clock;
+use tokio::task::JoinHandle;
 use crate::satellite::command::SensorCommand;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,10 +79,10 @@ impl Sensor{
         }
     }
 
-    pub fn delay_fault_injection(&self) {
+    pub fn delay_fault_injection(&self) -> JoinHandle<()> {
         let delay_inject = self.delay_inject.clone();
         let sensor_type = self.sensor_type.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
             info!("{:?} started simulation for corrupt fault injection",sensor_type);
             let now = Instant::now();
@@ -93,31 +94,33 @@ impl Sensor{
                 info!("{:?} injected delay fault",sensor_type)
             }
         });
+        handle
     }
 
-    pub fn corrupt_fault_injection(&self) {
+    pub fn corrupt_fault_injection(&self) -> JoinHandle<()>{
         let corrupt_inject = self.corrupt_inject.clone();
         let sensor_type = self.sensor_type.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(3)).await;
             info!("{:?} started simulation for corrupt fault injection",sensor_type);
             let now = Instant::now();
-            let delay_interval = 60;
-            let mut interval = tokio::time::interval_at(now + Duration::from_secs(delay_interval), Duration::from_secs(delay_interval));
+            let corrupt_interval = 60;
+            let mut interval = tokio::time::interval_at(now + Duration::from_secs(corrupt_interval), Duration::from_secs(corrupt_interval));
             loop{
                 interval.tick().await;
                 corrupt_inject.store(true, std::sync::atomic::Ordering::SeqCst);
                 info!("{:?} injected corrupt fault",sensor_type)
             }
         });
+        handle
     }
 
-    pub fn spawn(&mut self, buffer: Arc<PrioritizedBuffer>, sensor_command: Arc<Mutex<SensorCommand>>){
+    pub fn spawn(&mut self, buffer: Arc<PrioritizedBuffer>, sensor_command: Arc<Mutex<SensorCommand>>) -> JoinHandle<()>{
         let interval_ms = self.interval_ms.clone();
         let sensor_type = self.sensor_type.clone();
         let delay_inject = self.delay_inject.clone();
         let corrupt_inject = self.corrupt_inject.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let clock = Clock::new();
             let now = Instant::now();
             let mut interval = tokio::time::interval_at(now + Duration::from_millis(interval_ms), Duration::from_millis(interval_ms));
@@ -238,6 +241,7 @@ impl Sensor{
                 }
             }
         });
+        handle
     }
 }
 

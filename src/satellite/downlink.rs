@@ -11,6 +11,7 @@ use lapin::options::BasicPublishOptions;
 use tokio::sync::Mutex;
 use log::{info, error,warn};
 use quanta::Clock;
+use tokio::task::JoinHandle;
 use crate::util::compressor::Compressor;
 use crate::satellite::fault_message::FaultMessageData;
 use crate::satellite::FIFO_queue::FifoQueue;
@@ -62,10 +63,10 @@ impl Downlink {
         }
     }
 
-    pub fn start_window_controller(&self, interval_ms: u64) {
+    pub fn start_window_controller(&self, interval_ms: u64) -> JoinHandle<()> {
         let window = self.window.clone();
         let expected_window_open_time = self.expected_window_open_time.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let now = Instant::now();
             let clock = Clock::new();
             let mut interval = tokio::time::interval_at(now + Duration::from_millis(interval_ms), Duration::from_millis(interval_ms));
@@ -98,13 +99,14 @@ impl Downlink {
                 *expected_window_open_time.lock().await = datetime_utc;
             }
         });
+        handle
     }
 
-    pub fn process_data(&self) {
+    pub fn process_data(&self) -> JoinHandle<()>{
         let downlink_buffer = self.downlink_buffer.clone();
         let transmission_queue = self.transmission_queue.clone();
         let expected_window_open_time = self.expected_window_open_time.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let mut telemetry_data_counter = 0;
             let mut radiation_data_counter = 0;
             let mut antenna_data_counter = 0;
@@ -163,15 +165,16 @@ impl Downlink {
                 }
             }
         });
+        handle
     }
 
-    pub fn send_data(&self) {
+    pub fn send_data(&self) -> JoinHandle<()> {
         let transmission_queue = self.transmission_queue.clone();
         let window = self.window.clone();
         let downlink_queue_name = self.downlink_queue_name.clone();
         let channel = self.channel.clone();
         
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             loop {
                 if window.load(Ordering::SeqCst) {
                     if let Some(packet) = transmission_queue.pop().await {
@@ -183,7 +186,7 @@ impl Downlink {
                             msg,
                             BasicProperties::default().with_timestamp(Utc::now().timestamp() as u64),
                         ).await {
-                            error!("Error sending data: {}",e);
+                            warn!("Can't send data further: connection is closed, simulation done...");
                         } else {
                             info!("Message sent");
                         }
@@ -192,6 +195,7 @@ impl Downlink {
 
             }
         });
+        handle
     }
 
 }

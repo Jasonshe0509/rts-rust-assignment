@@ -14,13 +14,14 @@ use log::info;
 
 use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 use rts_rust_assignment::util::log_generator::LogGenerator;
 
 #[tokio::main]
 async fn main(){
     LogGenerator::new("satellite");
     info!("Starting Satellite System...");
-    
+
     //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
     let sensor_buffer = Arc::new(PrioritizedBuffer::new(50));
@@ -55,45 +56,54 @@ async fn main(){
     
     let channel = conn.create_channel().await
         .expect("Cannot create channel");
-    
+
 
     //initialize downlink
     let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel.clone(),"telemetry_queue".to_string());
-    
-    
+
+    let mut background_tasks = Vec::new();
+
     //Background task for sensor data acquisition
-    telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone());
-    radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone());
-    antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone());
+    background_tasks.push(telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone()));
+    background_tasks.push(radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone()));
+    background_tasks.push(antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone()));
 
     //Background task for real-time scheduler schedule & execute tasks
-    scheduler.schedule_task();
-    tokio::spawn(async move {
+    for schedule_handle in scheduler.schedule_task(){
+        background_tasks.push(schedule_handle);
+    }
+
+    background_tasks.push(tokio::spawn(async move {
         scheduler.execute_task(scheduler_command.clone(),telemetry_sensor_command.clone(),
                                radiation_sensor_command.clone(), antenna_sensor_command.clone()).await;
-    });
+    }));
 
     //Background task for downlink of window controller & process data & downlink data
-    downlink.start_window_controller(5000);
-    downlink.process_data();
-    downlink.send_data();
+    background_tasks.push(downlink.start_window_controller(5000));
+    background_tasks.push(downlink.process_data());
+    background_tasks.push(downlink.send_data());
 
     //Background task for simulation of delayed sensor data fault injection
-    telemetry_sensor.delay_fault_injection();
-    radiation_sensor.delay_fault_injection();
-    antenna_sensor.delay_fault_injection();
+    background_tasks.push(telemetry_sensor.delay_fault_injection());
+    background_tasks.push(radiation_sensor.delay_fault_injection());
+    background_tasks.push(antenna_sensor.delay_fault_injection());
 
     //Background task for simulation of corrupted sensor data fault injection
-    telemetry_sensor.corrupt_fault_injection();
-    radiation_sensor.corrupt_fault_injection();
-    antenna_sensor.corrupt_fault_injection();
-    
-    //Simulation time of this program
+    background_tasks.push(telemetry_sensor.corrupt_fault_injection());
+    background_tasks.push(radiation_sensor.corrupt_fault_injection());
+    background_tasks.push(antenna_sensor.corrupt_fault_injection());
+
+    //Simulation time of this program & stop all tasks & terminate connection channel
     tokio::time::sleep(Duration::from_secs(10)).await;
     if let Err(e) = conn.close(0, "Normal shutdown").await {
         eprintln!("Error closing connection: {:?}", e);
     }
     drop(conn);
     drop(channel);
-
+    
+    //stop all tasks
+    for background_task in background_tasks {
+        background_task.abort();
+    }
+    info!("All tasks stopped");
 }
