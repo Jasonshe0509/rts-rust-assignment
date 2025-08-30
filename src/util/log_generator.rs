@@ -2,6 +2,7 @@ use std::fs::OpenOptions;
 use std::path::PathBuf;
 use chrono::Local;
 use log::LevelFilter;
+use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, Layer, Registry};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -72,6 +73,8 @@ impl LogGenerator {
             .with_writer(std::io::stdout)
             .with_filter(TracingLevelFilter::INFO);
 
+        //Additional bridge log crate to tracing
+        //LogTracer::init().expect("Failed to initialize log tracer");
 
         // Register subscriber
         Registry::default()

@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use chrono::Utc;
 use tokio::time::{Duration};
 use crate::satellite::command::{SchedulerCommand, SensorCommand};
@@ -27,8 +28,6 @@ pub struct Task{
     pub start_time: Option<Instant>, //Absolute start time
     pub deadline: Option<Instant>, // Absolute deadline
     pub data: Option<SensorData>,
-    pub delay_recovery_time: Option<Instant>,
-    pub corrupt_recovery_time: Option<Instant>,
     pub priority: u8,
 }
 
@@ -51,9 +50,13 @@ impl TaskType{
 
 
 impl Task {
-    pub async fn execute(&mut self, buffer: Arc<PrioritizedBuffer>, 
-                         execution_command: Arc<Mutex<Option<SchedulerCommand>>>, 
-                         sensor_command: Option<Arc<Mutex<SensorCommand>>>) -> (Option<SensorData> , Option<FaultMessageData>){
+    pub async fn execute(&mut self, buffer: Arc<PrioritizedBuffer>,
+                         execution_command: Arc<Mutex<Option<SchedulerCommand>>>,
+                         sensor_command: Option<Arc<Mutex<SensorCommand>>>,
+                         delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
+                         corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
+                         delay_stat:Arc<AtomicBool>,
+                        corrupt_stat: Arc<AtomicBool>) -> (Option<SensorData>, Option<FaultMessageData>){
         let clock = Clock::new();
         let mut read_data_time = Duration::from_millis(0);
         let mut fault: Option<FaultMessageData> = None;
@@ -62,14 +65,16 @@ impl Task {
         if task_actual_start_time > self.start_time.unwrap() {
             warn!("Start delay for task {:?}: {:?}", self.task.name, task_actual_start_time.duration_since(self.start_time.unwrap()));
         }
-
+        
+        let mut actual_read_data_time = Utc::now();
+        
         //read data for scheduled task
         if self.task.name == TaskName::AntennaAlignment ||
             self.task.name == TaskName::HealthMonitoring ||
             self.task.name == TaskName::SpaceWeatherMonitoring {
             loop {
                 read_data_time = clock.now().duration_since(task_actual_start_time);
-                if read_data_time > Duration::from_millis(1000) {
+                if read_data_time > Duration::from_millis(100) {
                     warn!("{:?} task terminate due to data reading time exceed. \
                         Sensor data for task not received. Priority of data adjust to be increased.", self.task.name);
                     if let Some(c) = sensor_command.clone(){
@@ -79,90 +84,166 @@ impl Task {
                     return (None, None)
                 }
                 //info!("Buffer len: {}", buffer.len().await);
-                if !buffer.is_empty().await{
-                    let sensor_data = buffer.pop().await.unwrap();
-                    match self.task.name {
-                        TaskName::AntennaAlignment => {
-                            if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
-                                self.data = Some(sensor_data);
+                match buffer.pop().await{
+                    Some(sensor_data) => {
+                        match self.task.name {
+                            TaskName::AntennaAlignment => {
+                                if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
+                                    self.data = Some(sensor_data);
+                                    //actual_read_data_time = Utc::now();
+                                    break;
+                                }
+                            }
+                            TaskName::HealthMonitoring => {
+                                if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
+                                    self.data = Some(sensor_data);
+                                    //actual_read_data_time = Utc::now();
+                                    break;
+                                }
+                            }
+                            TaskName::SpaceWeatherMonitoring => {
+                                if sensor_data.sensor_type == SensorType::RadiationSensor {
+                                    self.data = Some(sensor_data);
+                                    //actual_read_data_time = Utc::now();
+                                    break;
+                                }
+                            }
+                            _ => {
                                 break;
                             }
                         }
-                        TaskName::HealthMonitoring => {
-                            if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
-                                self.data = Some(sensor_data);
-                                break;
-                            }
-                        }
-                        TaskName::SpaceWeatherMonitoring => {
-                            if sensor_data.sensor_type == SensorType::RadiationSensor {
-                                self.data = Some(sensor_data);
-                                break;
-                            }
-                        }
-                        _ => {
-                            break;
-                        }
+                        
+                        
                     }
+                    None => {}
                 }
             }
             if let Some(c) = sensor_command.clone(){
                 let mut command = c.lock().await;
                 *command = SensorCommand::NP;
             }
-            //*(sensor_command.lock().await) = SensorCommand::NP;
         }
         //process data or take action
         let data = self.data.as_ref();
-
+        
+        // let delay_stat = delay_status;
+        // let corrupt_stat = corrupt_status;
+        
         //Check Corrupt fault
+        {
+            let corrupt_recovery = corrupt_recovery_time.lock().await;
+            if corrupt_recovery.is_some() {
+                return (None, None);  
+            }
+        }
         match data{
             Some(data) => {
-                if data.corrupt_status{
+                if data.corrupt_status && !corrupt_stat.load(std::sync::atomic::Ordering::SeqCst){
+                    //check corrupted data
                     let msg =  format!("{:?} task received corrupted {:?} data, task terminated",self.task.name,data.sensor_type).to_string();
                     error!("{}",msg);
                     fault = Some(FaultMessageData::new(
-                        FaultType::Fault,FaultSituation::CorruptedData,
+                        FaultType::Fault,FaultSituation::CorruptedData(data.sensor_type.clone()),
                         msg));
-                    match self.corrupt_recovery_time{
-                        Some(mut recovery_time) => {
-                            let recovery_dur = Instant::now().duration_since(recovery_time).as_millis() as f64;
-                            if recovery_dur > 200.0{
-                                error!{"Mission Abort! due to fault of corrupted sensor data, recovery time exceed 200ms"}
-                            }
-                        },
-                        None => {
-                            self.corrupt_recovery_time = Some(Instant::now());
-                            if let Some(c) = sensor_command.clone(){
-                                let mut command = c.lock().await;
-                                *command = SensorCommand::CDR;
-                            }
-                        }
+
+                    let mut corrupt_recovery = corrupt_recovery_time.lock().await;
+                    *corrupt_recovery = Some(Instant::now());
+                    if let Some(c) = sensor_command.clone(){
+                        let mut command = c.lock().await;
+                        *command = SensorCommand::CDR;
                     }
-                    return (self.data.clone(), fault)
-                }else{
+                    corrupt_stat.store(true, std::sync::atomic::Ordering::SeqCst);
+                    //buffer.clear().await;
+                    return (None, fault);
+                }else if (!data.corrupt_status) && corrupt_stat.load(std::sync::atomic::Ordering::SeqCst){
                     //check recovery
-                    match self.corrupt_recovery_time{
-                        Some(recovery_time) => {
-                            let msg = format!("{:?} task received recovered {:?} data without corrupt with recovery time: {:?}ms"
-                                              ,self.task.name,data.sensor_type, Instant::now().duration_since(recovery_time).as_millis() as f64).to_string();
-                            info!("{}",msg);
-                            self.corrupt_recovery_time = None;
-                            if let Some(c) = sensor_command.clone(){
-                                let mut command = c.lock().await;
-                                *command = SensorCommand::NP;
-                            }
-                            fault = Some(FaultMessageData::new(
-                                FaultType::Fault,FaultSituation::CorruptedData,
-                                msg));
-                            return (self.data.clone(), fault)
-                        },
-                        None => {}
+                    let msg = format!("{:?} task start receiving recovered {:?} data without corrupt."
+                                      ,self.task.name,data.sensor_type).to_string();
+                    info!("{}",msg);
+                    if let Some(c) = sensor_command.clone(){
+                        let mut command = c.lock().await;
+                        *command = SensorCommand::NP;
                     }
+                    corrupt_stat.store(false, std::sync::atomic::Ordering::SeqCst);
+                    fault = Some(FaultMessageData::new(
+                        FaultType::Fault,FaultSituation::CorruptedDataRecovered(data.sensor_type.clone()),
+                        msg));
+                    *execution_command.lock().await = match self.task.name{
+                        TaskName::HealthMonitoring => Some(SchedulerCommand::PHM
+                            (TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(500)))),
+                        TaskName::SpaceWeatherMonitoring => Some(SchedulerCommand::PRM
+                            (TaskType::new(TaskName::SpaceWeatherMonitoring, Some(1500), Duration::from_millis(600)))),
+                        TaskName::AntennaAlignment => Some(SchedulerCommand::PAA
+                            (TaskType::new(TaskName::AntennaAlignment, Some(2000), Duration::from_millis(1000)))),
+                        _ => None
+                    };
+                    return (None, fault);
+                }else if (!data.corrupt_status) && !corrupt_stat.load(std::sync::atomic::Ordering::SeqCst){}
+                else{
+                    return (None,None);
+                }
+            } 
+            None => {return (None,None);}
+        }
+        
+
+        //check delay fault
+        {
+            let delay_recovery = delay_recovery_time.lock().await;
+            if delay_recovery.is_some() {
+                return (None, None);
+            }
+        }
+        match data{
+            Some(data) => {
+                let diff = actual_read_data_time - data.timestamp;
+                if diff > chrono::Duration::milliseconds(200) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst){
+                    let msg =  format!("{:?} task received delayed {:?} data with {}ms delay, task terminated"
+                                       ,self.task.name,data.sensor_type,diff.num_milliseconds()).to_string();
+                    error!("{}",msg);
+                    fault = Some(FaultMessageData::new(
+                        FaultType::Fault,FaultSituation::DelayedData(data.sensor_type.clone()),
+                        msg));
+                    
+                    let mut delay_recover = delay_recovery_time.lock().await;
+                    *delay_recover = Some(Instant::now());
+                    if let Some(c) = sensor_command.clone(){
+                        let mut command = c.lock().await;
+                        *command = SensorCommand::DDR;
+                    }
+                    delay_stat.store(true, std::sync::atomic::Ordering::SeqCst);
+                    return (None, fault)
+                }else if (!(diff > chrono::Duration::milliseconds(200))) && delay_stat.load(std::sync::atomic::Ordering::SeqCst){
+                    //check recovery
+                    let msg = format!("{:?} task start receiving recovered {:?} data without delay."
+                                      ,self.task.name,data.sensor_type).to_string();
+                    info!("{}",msg);
+                    if let Some(c) = sensor_command.clone(){
+                        let mut command = c.lock().await;
+                        *command = SensorCommand::NP;
+                    }
+                    delay_stat.store(false, std::sync::atomic::Ordering::SeqCst);
+                    fault = Some(FaultMessageData::new(
+                        FaultType::Fault,FaultSituation::DelayedDataRecovered(data.sensor_type.clone()),
+                        msg));
+                    *execution_command.lock().await = match self.task.name{
+                        TaskName::HealthMonitoring => Some(SchedulerCommand::PHM
+                            (TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(500)))),
+                        TaskName::SpaceWeatherMonitoring => Some(SchedulerCommand::PRM
+                            (TaskType::new(TaskName::SpaceWeatherMonitoring, Some(1500), Duration::from_millis(600)))),
+                        TaskName::AntennaAlignment => Some(SchedulerCommand::PAA
+                            (TaskType::new(TaskName::AntennaAlignment, Some(2000), Duration::from_millis(1000)))),
+                        _ => None
+                    };
+                    return (None, fault)
+                }else if (!(diff > chrono::Duration::milliseconds(200))) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst){}
+                else{
+                    return (None,None);
                 }
             }
-            None => {}
+            None => {return (None,None);}
         }
+        
 
         match self.task.name {
             TaskName::HealthMonitoring => {
@@ -220,50 +301,7 @@ impl Task {
                 info!("Signal Optimizing");
             }
         }
-        //check delay fault
-        match data{
-            Some(data) => {
-                let diff = Utc::now() - data.timestamp;
-                if diff > chrono::Duration::seconds(5){
-                    let msg =  format!("{:?} task received delayed {:?} data with {}s delay",self.task.name,data.sensor_type,diff).to_string();
-                    error!("{}",msg);
-                    fault = Some(FaultMessageData::new(
-                        FaultType::Fault,FaultSituation::DelayedData,
-                       msg));
-                    match self.delay_recovery_time{
-                        Some(recovery_time) => {
-                            let recovery_dur = Instant::now().duration_since(recovery_time).as_millis() as f64;
-                            if recovery_dur > 200.0{
-                                error!{"Mission Abort! due to fault of delayed sensor data, recovery time exceed 200ms"}
-                            }
-                        },
-                        None => {
-                            self.delay_recovery_time = Some(Instant::now());
-                            if let Some(c) = sensor_command.clone(){
-                                let mut command = c.lock().await;
-                                *command = SensorCommand::DDR;
-                            }
-                        }
-                    }
-
-                }else{
-                    //check recovery
-                    match self.delay_recovery_time{
-                        Some(recovery_time) => {
-                            info!("{:?} task received recovered {:?} data without delay with recovery time: {}ms"
-                                ,self.task.name,data.sensor_type,Instant::now().duration_since(recovery_time).as_millis() as f64);
-                            self.delay_recovery_time = None;
-                            if let Some(c) = sensor_command.clone(){
-                                let mut command = c.lock().await;
-                                *command = SensorCommand::NP;
-                            }
-                        }
-                        None => {}
-                    }
-                }
-            }
-            None => {}
-        }
+        
 
         tokio::time::sleep(self.task.process_time - read_data_time).await; //simulate processing time
         let task_actual_end_time = clock.now();

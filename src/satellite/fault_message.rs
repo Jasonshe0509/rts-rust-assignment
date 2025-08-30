@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::satellite::sensor::SensorType;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FaultMessageData {
@@ -15,10 +16,10 @@ pub enum FaultType{
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum FaultSituation{
-    DelayedData,
-    CorruptedData,
-    DelayedDataRecovered,
-    CorruptedDataRecovered,
+    DelayedData(SensorType),
+    CorruptedData(SensorType),
+    DelayedDataRecovered(SensorType),
+    CorruptedDataRecovered(SensorType),
 }
 
 impl FaultMessageData {

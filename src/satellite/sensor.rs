@@ -6,11 +6,13 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use log::{error, info, warn};
 use rand::{Rng, SeedableRng};
-use tokio::time::{interval, Duration,Instant};
+use tokio::time::{interval, Duration};
+use quanta::Instant;
 use tokio::sync::Mutex;
 use quanta::Clock;
 use tokio::task::JoinHandle;
-use crate::satellite::command::SensorCommand;
+use crate::satellite::command::{SchedulerCommand, SensorCommand};
+use crate::satellite::task::{TaskName, TaskType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SensorData {
@@ -21,7 +23,7 @@ pub struct SensorData {
     pub corrupt_status: bool,
 }
 
-#[derive(Debug, Clone, PartialEq,Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq,Serialize, Deserialize, Eq)]
 pub enum SensorType{
     RadiationSensor,
     OnboardTelemetrySensor,
@@ -67,15 +69,26 @@ pub struct Sensor{
     pub interval_ms: u64,
     delay_inject: Arc<AtomicBool>,
     corrupt_inject: Arc<AtomicBool>,
+    pub delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
+    pub corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
+    pub delayed: Arc<AtomicBool>,
+    pub corrupted: Arc<AtomicBool>,
+
 }
 
 impl Sensor{
-    pub fn new(sensor_type : SensorType, interval_ms : u64) -> Sensor{
+    pub fn new(sensor_type : SensorType, interval_ms : u64,
+               delay_recovery: Arc<Mutex<Option<quanta::Instant>>>, corrupt_recovery: Arc<Mutex<Option<quanta::Instant>>>,
+                delay_stat: Arc<AtomicBool>, corrupt_stat: Arc<AtomicBool>) -> Sensor{
         Sensor{
             sensor_type,
             interval_ms,
             delay_inject: Arc::new(AtomicBool::new(false)),
             corrupt_inject: Arc::new(AtomicBool::new(false)),
+            delay_recovery_time: delay_recovery,
+            corrupt_recovery_time: corrupt_recovery,
+            delayed: delay_stat,
+            corrupted: corrupt_stat,
         }
     }
 
@@ -84,8 +97,8 @@ impl Sensor{
         let sensor_type = self.sensor_type.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            info!("{:?} started simulation for corrupt fault injection",sensor_type);
-            let now = Instant::now();
+            info!("{:?} started simulation for delay fault injection for every 60s",sensor_type);
+            let now = tokio::time::Instant::now();
             let delay_interval = 60;
             let mut interval = tokio::time::interval_at(now + Duration::from_secs(delay_interval), Duration::from_secs(delay_interval));
             loop{
@@ -102,8 +115,8 @@ impl Sensor{
         let sensor_type = self.sensor_type.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(3)).await;
-            info!("{:?} started simulation for corrupt fault injection",sensor_type);
-            let now = Instant::now();
+            info!("{:?} started simulation for corrupt fault injection for every 60s",sensor_type);
+            let now = tokio::time::Instant::now();
             let corrupt_interval = 60;
             let mut interval = tokio::time::interval_at(now + Duration::from_secs(corrupt_interval), Duration::from_secs(corrupt_interval));
             loop{
@@ -115,14 +128,19 @@ impl Sensor{
         handle
     }
 
-    pub fn spawn(&mut self, buffer: Arc<PrioritizedBuffer>, sensor_command: Arc<Mutex<SensorCommand>>) -> JoinHandle<()>{
+    pub fn spawn(&mut self, buffer: Arc<PrioritizedBuffer>, sensor_command: Arc<Mutex<SensorCommand>>,
+                 scheduler_command: Arc<Mutex<Option<SchedulerCommand>>>) -> JoinHandle<()>{
         let interval_ms = self.interval_ms.clone();
         let sensor_type = self.sensor_type.clone();
         let delay_inject = self.delay_inject.clone();
         let corrupt_inject = self.corrupt_inject.clone();
+        let delay_recovery_time = self.delay_recovery_time.clone();
+        let corrupt_recovery_time = self.corrupt_recovery_time.clone();
+        let delay_stat = self.delayed.clone();
+        let corrupt_stat = self.corrupted.clone();
         let handle = tokio::spawn(async move {
             let clock = Clock::new();
-            let now = Instant::now();
+            let now = tokio::time::Instant::now();
             let mut interval = tokio::time::interval_at(now + Duration::from_millis(interval_ms), Duration::from_millis(interval_ms));
             let mut rng = rand::rngs::StdRng::seed_from_u64(42);
             let start_time = clock.now();
@@ -139,25 +157,55 @@ impl Sensor{
                 //drift
                 let drift = actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
                 info!("{:?} data acquisition drift: {}ms", sensor_type,drift);
-                expected_next_tick += Duration::from_millis(interval_ms);
+                expected_next_tick = actual_tick_time +  Duration::from_millis(interval_ms);
 
                 //check corrupt
                 let mut corrupt = false;
                 if corrupt_inject.load(std::sync::atomic::Ordering::SeqCst) {
+                    corrupt = true;
+                }
+                if corrupt_stat.load(std::sync::atomic::Ordering::SeqCst) {
                     match *sensor_command.lock().await{
                         SensorCommand::CDR => {
                             //Trigger & Simulate Corrupted Data Recovery
-                            tokio::time::sleep(Duration::from_millis(10)).await;
-                            corrupt_inject.store(false, std::sync::atomic::Ordering::SeqCst);
-                            info!("{:?} recovered corrupt fault",sensor_type);
-                            corrupt = false;
-                        }
-                        _ => corrupt = true
-                    }
+                            let recovery_time_opt = {
+                                // lock only long enough to clone the value
+                                let temp = corrupt_recovery_time.lock().await;
+                                *temp
+                            };
 
+                            if let Some(start_time) = recovery_time_opt {
+                                corrupt_inject.store(false,std::sync::atomic::Ordering::SeqCst);
+                                let diff = Instant::now().duration_since(start_time).as_millis() as f64;
+                                {
+                                    // lock again only to update
+                                    let mut temp = corrupt_recovery_time.lock().await;
+                                    *temp = None;
+                                }
+                                *scheduler_command.lock().await = match sensor_type{
+                                    SensorType::OnboardTelemetrySensor => Some(SchedulerCommand::PHM
+                                        (TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(500)))),
+                                    SensorType::RadiationSensor => Some(SchedulerCommand::PRM
+                                        (TaskType::new(TaskName::SpaceWeatherMonitoring, Some(1500), Duration::from_millis(600)))),
+                                    SensorType::AntennaPointingSensor => Some(SchedulerCommand::PAA
+                                        (TaskType::new(TaskName::AntennaAlignment, Some(2000), Duration::from_millis(1000)))),
+                                    _ => None
+                                };
+                                buffer.clear().await; // no lock held here
+                                info!("{:?} recovered corrupt fault. Recovery Time: {}ms", sensor_type, diff);
+                                if diff > 200.0 {
+                                    error!("Mission Abort! due to fault of corrupted {:?} data, recovery time exceed 200ms", sensor_type);
+                                }
+                                corrupt = false;
+                            }
+                        }
+                        _ => {}
+                    }
                 }
 
-                let data = match sensor_type{
+
+
+                let mut data = match sensor_type{
                     SensorType::AntennaPointingSensor => SensorData {
                         sensor_type: SensorType::AntennaPointingSensor,
                         priority: match *sensor_command.lock().await{
@@ -206,20 +254,53 @@ impl Sensor{
                         corrupt_status: corrupt,
                     },
                 };
-                
+
+                //check delay
                 if delay_inject.load(std::sync::atomic::Ordering::SeqCst) {
+                    info!("{:?} simulate delay data sleep", sensor_type);
+                    tokio::time::sleep(Duration::from_millis(200)).await; //simulate 200 delay
+                }
+                if delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
                     match *sensor_command.lock().await{
                         SensorCommand::DDR => {
                             //Trigger & Simulate Delayed Data Recovery
-                            tokio::time::sleep(Duration::from_millis(10)).await;
-                            delay_inject.store(false, std::sync::atomic::Ordering::SeqCst);
-                            info!("{:?} recovered delay fault",sensor_type);
+                            let recovery_time_opt = {
+                                // lock only long enough to clone the value
+                                let temp = delay_recovery_time.lock().await;
+                                *temp
+                            };
+
+                            if let Some(start_time) = recovery_time_opt {
+                                delay_inject.store(false,std::sync::atomic::Ordering::SeqCst);
+                                let diff = Instant::now().duration_since(start_time).as_millis() as f64;
+                                {
+                                    // lock again only to update
+                                    let mut temp = delay_recovery_time.lock().await;
+                                    *temp = None;
+                                }
+
+                                *scheduler_command.lock().await = match sensor_type{
+                                    SensorType::OnboardTelemetrySensor => Some(SchedulerCommand::PHM
+                                        (TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(500)))),
+                                    SensorType::RadiationSensor => Some(SchedulerCommand::PRM
+                                        (TaskType::new(TaskName::SpaceWeatherMonitoring, Some(1500), Duration::from_millis(600)))),
+                                    SensorType::AntennaPointingSensor => Some(SchedulerCommand::PAA
+                                        (TaskType::new(TaskName::AntennaAlignment, Some(2000), Duration::from_millis(1000)))),
+                                    _ => None
+                                };
+                                buffer.clear().await; // no lock held here
+                                info!("{:?} recovered delay fault. Recovery Time: {}ms", sensor_type, diff);
+                                if diff > 200.0 {
+                                    error!("Mission Abort! due to fault of delayed {:?} data, recovery time exceed 200ms", sensor_type);
+                                }
+                                data.timestamp = Utc::now();
+                            }
                         },
-                        _ => {
-                            tokio::time::sleep(Duration::from_millis(500)).await;
-                        } //simulate 5 sec delay
+                        _ => {}
                     }
                 }
+
+
                 info!("Data generated from {:?}", data.sensor_type);
 
                 match buffer.push(data).await {

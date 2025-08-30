@@ -23,7 +23,7 @@ impl PrioritizedBuffer {
         if heap.len() >= self.capacity {
             // Buffer full, drop lowest-priority data if new data has higher priority
             if let Some(highest) = heap.peek_min(){
-                if data.priority <= highest.priority {
+                if data <= *highest {
                     // Drop new data if its priority is lower
                     // Data loss
                     warn!("Buffer full, {:?} data loss",data.sensor_type);
