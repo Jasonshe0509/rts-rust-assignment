@@ -39,6 +39,7 @@ impl PrioritizedBuffer {
         let data_sensor = data.sensor_type.clone();
         heap.push(data);
         drop(heap);
+        
         //Latency
         let buffer_timestamp = Utc::now();
         let latency = buffer_timestamp.signed_duration_since(data_timestamp).num_microseconds().unwrap() as f64 / 1000.0;

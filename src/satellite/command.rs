@@ -12,5 +12,7 @@ pub enum SchedulerCommand {
 pub enum SensorCommand{
     IP, //Increase Priority
     NP, //Default Priority
+    DDR, //Delayed Data Recovery
+    CDR, //Corrupted Data Recovery
 }
 

@@ -77,10 +77,7 @@ impl Downlink {
             loop {
                 interval.tick().await;
                 let actual_start_time = clock.now();
-
-                system_time = SystemTime::now() + Duration::from_millis(interval_ms);
-                datetime_utc = system_time.into();
-                *expected_window_open_time.lock().await = datetime_utc;
+                
 
                 window.store(true, Ordering::SeqCst);
                 info!("Downlink Window Opened");
@@ -95,6 +92,10 @@ impl Downlink {
                 tokio::time::sleep(Duration::from_millis(30)).await; //open for 30 ms
                 window.store(false, Ordering::SeqCst);
                 info!("Downlink Window Closed");
+                
+                system_time = SystemTime::now() + Duration::from_millis(interval_ms);
+                datetime_utc = system_time.into();
+                *expected_window_open_time.lock().await = datetime_utc;
             }
         });
     }
@@ -135,13 +136,13 @@ impl Downlink {
                             id = format!("FMI{}", fault_data_counter);
                         }
                     }
-                    let compress_sensor_data = Compressor::compress(&data);
+                    let compress_sensor_data = Compressor::compress(data);
 
 
                     let packet = PacketizeData::new(id, expected_window_open_time.lock().await.clone(),
                                                     compress_sensor_data.len() as f64, compress_sensor_data);
 
-                    let compress_packet = Compressor::compress(&packet);
+                    let compress_packet = Compressor::compress(packet);
 
                     transmission_queue.push(compress_packet).await;
 

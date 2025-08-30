@@ -4,10 +4,9 @@ use tokio::sync::Mutex;
 use rts_rust_assignment::satellite::buffer::PrioritizedBuffer;
 use rts_rust_assignment::satellite::sensor::{Sensor, SensorType};
 use tokio::time::Duration;
-use rts_rust_assignment::satellite::task::{Task, TaskName, TaskType};
+use rts_rust_assignment::satellite::task::{TaskName, TaskType};
 use rts_rust_assignment::satellite::scheduler::Scheduler;
 use rts_rust_assignment::satellite::command::{SchedulerCommand,SensorCommand};
-use rts_rust_assignment::satellite::downlink::TransmissionData;
 use rts_rust_assignment::satellite::FIFO_queue::FifoQueue;
 use rts_rust_assignment::satellite::downlink::Downlink;
 
@@ -18,9 +17,9 @@ async fn main(){
     let sensor_buffer = Arc::new(PrioritizedBuffer::new(50));
 
     //initialize sensor
-    let telemetry_sensor = Sensor::new(SensorType::OnboardTelemetrySensor,500);
-    let radiation_sensor = Sensor::new(SensorType::RadiationSensor,1000);
-    let antenna_sensor = Sensor::new(SensorType::AntennaPointingSensor,1500);
+    let mut telemetry_sensor = Sensor::new(SensorType::OnboardTelemetrySensor,500);
+    let mut radiation_sensor = Sensor::new(SensorType::RadiationSensor,1000);
+    let mut antenna_sensor = Sensor::new(SensorType::AntennaPointingSensor,1500);
 
     //initialize tasks to be scheduled
     let health_monitoring = TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(500));
@@ -51,20 +50,34 @@ async fn main(){
     //initialize downlink
     let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel,"telemetry_queue".to_string());
 
+    //Background task for sensor data acquisition
     telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone());
     radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone());
     antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone());
 
+    //Background task for real-time scheduler schedule & execute tasks
     scheduler.schedule_task();
     tokio::spawn(async move {
         scheduler.execute_task(scheduler_command.clone(),telemetry_sensor_command.clone(),
                                radiation_sensor_command.clone(), antenna_sensor_command.clone()).await;
     });
 
+    //Background task for downlink of window controller & process data & downlink data
     downlink.start_window_controller(5000);
     downlink.process_data();
     downlink.send_data();
 
+    //Background task for simulation of delayed sensor data fault injection
+    telemetry_sensor.delay_fault_injection();
+    radiation_sensor.delay_fault_injection();
+    antenna_sensor.delay_fault_injection();
+
+    //Background task for simulation of corrupted sensor data fault injection
+    telemetry_sensor.corrupt_fault_injection();
+    radiation_sensor.corrupt_fault_injection();
+    antenna_sensor.corrupt_fault_injection();
+    
+    //Simulation time of this program
     tokio::time::sleep(Duration::from_secs(20)).await;
     
 }

@@ -15,5 +15,18 @@ pub enum FaultType{
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum FaultSituation{
+    DelayedData,
+    CorruptedData,
+    DelayedDataRecovered,
+    CorruptedDataRecovered,
+}
 
+impl FaultMessageData {
+    pub fn new(fault_type: FaultType, situation: FaultSituation, message: String) -> Self {
+        FaultMessageData{
+            fault_type,
+            situation,
+            message
+        }
+    }
 }

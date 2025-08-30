@@ -40,6 +40,8 @@ impl Scheduler {
                     start_time: None,
                     deadline: None,
                     data: None,
+                    delay_recovery_time: None,
+                    corrupt_recovery_time: None,
                     priority: 5,
                 };
                 self.task_queue.lock().await.push(new_task);
@@ -52,6 +54,8 @@ impl Scheduler {
                     start_time: None,
                     deadline: None,
                     data: None,
+                    delay_recovery_time: None,
+                    corrupt_recovery_time: None,
                     priority: 5,
                 };
                 self.task_queue.lock().await.push(new_task);
@@ -64,6 +68,8 @@ impl Scheduler {
                     start_time: None,
                     deadline: None,
                     data: None,
+                    delay_recovery_time: None,
+                    corrupt_recovery_time: None,
                     priority: 5,
                 };
                 self.task_queue.lock().await.push(new_task);
@@ -95,6 +101,8 @@ impl Scheduler {
                         start_time: None,
                         deadline: None,
                         data: None,
+                        delay_recovery_time: None,
+                        corrupt_recovery_time: None,
                         priority: 1
                     };
                     task_queue.lock().await.push(new_task);
@@ -123,26 +131,30 @@ impl Scheduler {
                 task.start_time = Some(start);
                 task.deadline = Some(start + task.task.process_time);
                 let mut data = None;
+                let mut fault = None;
                 match task.task.name {
                     TaskName::HealthMonitoring => {
-                        data = task.execute(self.sensor_buffer.clone(),
+                        (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(telemetry_command.clone())).await;
                     }
                     TaskName::SpaceWeatherMonitoring => {
-                        data = task.execute(self.sensor_buffer.clone(),
+                        (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(radiation_command.clone())).await;
                     }
                     TaskName::AntennaAlignment => {
-                        data = task.execute(self.sensor_buffer.clone(),
+                        (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(antenna_command.clone())).await;
                     }
                     _ => {
-                        data = task.execute(self.sensor_buffer.clone(),
+                        (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), None).await;
                     }
                 }
                 if let Some(sensor_data) = data{
                     downlink_buffer.push(TransmissionData::Sensor(sensor_data)).await;
+                }
+                if let Some(fault_data) = fault{
+                    downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
                 }
                 
             }
