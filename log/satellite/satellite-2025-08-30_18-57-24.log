@@ -1,0 +1,209 @@
+[2m2025-08-30T10:57:24.5998035Z[0m [32m INFO[0m [2msatellite[0m[2m:[0m Starting Satellite System...    
+[2m2025-08-30T10:57:25.3594237Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 16ms    
+[2m2025-08-30T10:57:25.3598606Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:25.360063Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 0    
+[2m2025-08-30T10:57:25.3602736Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.528ms    
+[2m2025-08-30T10:57:25.3607202Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:25.8437498Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 0ms    
+[2m2025-08-30T10:57:25.8437627Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 0ms    
+[2m2025-08-30T10:57:25.8439602Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:25.8441251Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:25.8442028Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 1    
+[2m2025-08-30T10:57:25.8444679Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.51ms    
+[2m2025-08-30T10:57:25.8446748Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:25.8448399Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 2    
+[2m2025-08-30T10:57:25.8450452Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 0.967ms    
+[2m2025-08-30T10:57:25.8451921Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:26.3567695Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data acquisition drift: 13ms    
+[2m2025-08-30T10:57:26.3567879Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 13ms    
+[2m2025-08-30T10:57:26.3571788Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from AntennaPointingSensor    
+[2m2025-08-30T10:57:26.3572709Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:26.3576143Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 3    
+[2m2025-08-30T10:57:26.3578396Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for AntennaPointingSensor: 0.683ms    
+[2m2025-08-30T10:57:26.3579887Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data pushed to buffer    
+[2m2025-08-30T10:57:26.35815Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 4    
+[2m2025-08-30T10:57:26.3583265Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 1.055ms    
+[2m2025-08-30T10:57:26.3584791Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:26.8593004Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 16ms    
+[2m2025-08-30T10:57:26.8593004Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task HealthMonitoring scheduled at 25365588148726 with drift 16.0    
+[2m2025-08-30T10:57:26.8593124Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 16ms    
+[2m2025-08-30T10:57:26.8596192Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:26.8598446Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:26.8600032Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 5    
+[2m2025-08-30T10:57:26.860287Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.669ms    
+[2m2025-08-30T10:57:26.8603363Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Start delay for task HealthMonitoring: 11.032µs    
+[2m2025-08-30T10:57:26.8604373Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:26.8606884Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 6    
+[2m2025-08-30T10:57:26.860832Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 0.99ms    
+[2m2025-08-30T10:57:26.8609825Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:26.86115Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Monitoring health of satellite    
+[2m2025-08-30T10:57:27.3522081Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 9ms    
+[2m2025-08-30T10:57:27.3524261Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:27.352645Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 6    
+[2m2025-08-30T10:57:27.3528407Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.416ms    
+[2m2025-08-30T10:57:27.352985Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:27.6553563Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor started simulation for corrupt fault injection    
+[2m2025-08-30T10:57:27.6553623Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor started simulation for corrupt fault injection    
+[2m2025-08-30T10:57:27.6553562Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor started simulation for corrupt fault injection    
+[2m2025-08-30T10:57:27.8462208Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data acquisition drift: 3ms    
+[2m2025-08-30T10:57:27.8462208Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 3ms    
+[2m2025-08-30T10:57:27.8462702Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task SpaceWeatherMonitoring scheduled at 25366575123975 with drift 3.0    
+[2m2025-08-30T10:57:27.8462387Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 3ms    
+[2m2025-08-30T10:57:27.8464682Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from AntennaPointingSensor    
+[2m2025-08-30T10:57:27.8466211Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:27.8468095Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:27.8469052Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 7    
+[2m2025-08-30T10:57:27.847218Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for AntennaPointingSensor: 0.736ms    
+[2m2025-08-30T10:57:27.8473751Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data pushed to buffer    
+[2m2025-08-30T10:57:27.8475278Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 8    
+[2m2025-08-30T10:57:27.8476803Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 1.06ms    
+[2m2025-08-30T10:57:27.8478242Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:27.8479897Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 9    
+[2m2025-08-30T10:57:27.8481421Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 1.331ms    
+[2m2025-08-30T10:57:27.848299Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:28.3542601Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 11ms    
+[2m2025-08-30T10:57:28.3545209Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:28.3546674Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 10    
+[2m2025-08-30T10:57:28.3548194Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.301ms    
+[2m2025-08-30T10:57:28.3549526Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:28.3701864Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Completion delay for task HealthMonitoring: 9.965368ms    
+[2m2025-08-30T10:57:28.3705147Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Start delay for task SpaceWeatherMonitoring: 18.75µs    
+[2m2025-08-30T10:57:28.3712201Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Monitoring Space Weather    
+[2m2025-08-30T10:57:28.3713853Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Solar storm detected, safe mode activation needed    
+[2m2025-08-30T10:57:28.3729059Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::downlink[0m[2m:[0m Packet insert to transmission queue latency: 2ms    
+[2m2025-08-30T10:57:28.3730978Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::downlink[0m[2m:[0m Downlink buffer fill rate:  0%    
+[2m2025-08-30T10:57:28.8593014Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task HealthMonitoring scheduled at 25367588142685 with drift 16.0    
+[2m2025-08-30T10:57:28.8593259Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task AntennaAlignment scheduled at 25367588180090 with drift 16.0    
+[2m2025-08-30T10:57:28.8593014Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 16ms    
+[2m2025-08-30T10:57:28.8593078Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 16ms    
+[2m2025-08-30T10:57:28.8601887Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:28.8603138Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:28.8604614Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 4    
+[2m2025-08-30T10:57:28.8608008Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.595ms    
+[2m2025-08-30T10:57:28.8609589Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:28.8612778Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 5    
+[2m2025-08-30T10:57:28.8614615Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 1.151ms    
+[2m2025-08-30T10:57:28.8615827Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:29.352303Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data acquisition drift: 9ms    
+[2m2025-08-30T10:57:29.3523032Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 9ms    
+[2m2025-08-30T10:57:29.3526503Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from AntennaPointingSensor    
+[2m2025-08-30T10:57:29.3527892Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:29.3530261Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 6    
+[2m2025-08-30T10:57:29.3534487Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for AntennaPointingSensor: 0.803ms    
+[2m2025-08-30T10:57:29.3538219Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data pushed to buffer    
+[2m2025-08-30T10:57:29.3541026Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 7    
+[2m2025-08-30T10:57:29.3543588Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 1.573ms    
+[2m2025-08-30T10:57:29.3546042Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:29.6553434Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor started simulation for corrupt fault injection    
+[2m2025-08-30T10:57:29.6553394Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor started simulation for corrupt fault injection    
+[2m2025-08-30T10:57:29.6553566Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor started simulation for corrupt fault injection    
+[2m2025-08-30T10:57:29.8452912Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:29.8452967Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:29.8452912Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::downlink[0m[2m:[0m Downlink Window Opened    
+[2m2025-08-30T10:57:29.8456885Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:29.8457238Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::downlink[0m[2m:[0m Message sent    
+[2m2025-08-30T10:57:29.8460082Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:29.8464753Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 8    
+[2m2025-08-30T10:57:29.8473095Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 1.623ms    
+[2m2025-08-30T10:57:29.8476233Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:29.8478317Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 9    
+[2m2025-08-30T10:57:29.8479581Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 1.953ms    
+[2m2025-08-30T10:57:29.8480851Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:29.8773234Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::downlink[0m[2m:[0m Downlink Window Closed    
+[2m2025-08-30T10:57:30.3542878Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 11ms    
+[2m2025-08-30T10:57:30.3545232Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:30.3546753Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 10    
+[2m2025-08-30T10:57:30.354841Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.321ms    
+[2m2025-08-30T10:57:30.3549958Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:30.3864842Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Completion delay for task SpaceWeatherMonitoring: 15.972015ms    
+[2m2025-08-30T10:57:30.3869133Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Preempted Safe Mode Activation Task    
+[2m2025-08-30T10:57:30.3871335Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Start delay for task SafeModeActivation: 8.995µs    
+[2m2025-08-30T10:57:30.3872767Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Safe Mode Activating    
+[2m2025-08-30T10:57:30.701256Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Completion delay for task SafeModeActivation: 14.115246ms    
+[2m2025-08-30T10:57:30.7014995Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Start delay for task HealthMonitoring: 11.262µs    
+[2m2025-08-30T10:57:30.7016751Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Monitoring health of satellite    
+[2m2025-08-30T10:57:30.8452664Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:30.8452667Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:30.8452816Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:30.8453255Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task SpaceWeatherMonitoring scheduled at 25369574180588 with drift 2.0    
+[2m2025-08-30T10:57:30.8452526Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task HealthMonitoring scheduled at 25369574093618 with drift 2.0    
+[2m2025-08-30T10:57:30.8454749Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:30.8455801Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from AntennaPointingSensor    
+[2m2025-08-30T10:57:30.8456691Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:30.8460372Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 10    
+[2m2025-08-30T10:57:30.8464044Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 0.931ms    
+[2m2025-08-30T10:57:30.8466332Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:30.846818Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 11    
+[2m2025-08-30T10:57:30.8469976Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for AntennaPointingSensor: 1.419ms    
+[2m2025-08-30T10:57:30.8471166Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data pushed to buffer    
+[2m2025-08-30T10:57:30.8472558Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 12    
+[2m2025-08-30T10:57:30.847381Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 1.714ms    
+[2m2025-08-30T10:57:30.8474989Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:31.3532556Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 10ms    
+[2m2025-08-30T10:57:31.3535146Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:31.3536691Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 13    
+[2m2025-08-30T10:57:31.3539141Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.449ms    
+[2m2025-08-30T10:57:31.354083Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:31.8555057Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 12ms    
+[2m2025-08-30T10:57:31.8555057Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 12ms    
+[2m2025-08-30T10:57:31.8557666Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:31.8559185Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:31.8560606Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 14    
+[2m2025-08-30T10:57:31.8563302Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.569ms    
+[2m2025-08-30T10:57:31.8564753Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:31.8566283Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 15    
+[2m2025-08-30T10:57:31.8567861Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 0.877ms    
+[2m2025-08-30T10:57:31.8569345Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:32.2162521Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Completion delay for task HealthMonitoring: 14.744568ms    
+[2m2025-08-30T10:57:32.2165973Z[0m [33m WARN[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Start delay for task AntennaAlignment: 12.659µs    
+[2m2025-08-30T10:57:32.21686Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::task[0m[2m:[0m Aligning Antenna    
+[2m2025-08-30T10:57:32.3585926Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data acquisition drift: 15ms    
+[2m2025-08-30T10:57:32.3585927Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 15ms    
+[2m2025-08-30T10:57:32.358828Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from AntennaPointingSensor    
+[2m2025-08-30T10:57:32.3589887Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:32.3591309Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 3    
+[2m2025-08-30T10:57:32.35941Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for AntennaPointingSensor: 0.582ms    
+[2m2025-08-30T10:57:32.3595713Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data pushed to buffer    
+[2m2025-08-30T10:57:32.3597761Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 4    
+[2m2025-08-30T10:57:32.3599546Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.965ms    
+[2m2025-08-30T10:57:32.3601355Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:32.8483222Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 5ms    
+[2m2025-08-30T10:57:32.8483221Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task AntennaAlignment scheduled at 25371577167016 with drift 5.0    
+[2m2025-08-30T10:57:32.8483796Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 5ms    
+[2m2025-08-30T10:57:32.848468Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task HealthMonitoring scheduled at 25371577323849 with drift 5.0    
+[2m2025-08-30T10:57:32.8485911Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:32.8487442Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 5    
+[2m2025-08-30T10:57:32.8488775Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 0.289ms    
+[2m2025-08-30T10:57:32.8490159Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:32.8494611Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:32.8495975Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 6    
+[2m2025-08-30T10:57:32.8498574Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.84ms    
+[2m2025-08-30T10:57:32.850078Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:33.3522699Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 9ms    
+[2m2025-08-30T10:57:33.3525245Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:33.3526768Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 7    
+[2m2025-08-30T10:57:33.3528455Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.327ms    
+[2m2025-08-30T10:57:33.35299Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:33.3859026Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::downlink[0m[2m:[0m Packet insert to transmission queue latency: 2ms    
+[2m2025-08-30T10:57:33.3861468Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::downlink[0m[2m:[0m Downlink buffer fill rate:  5%    
+[2m2025-08-30T10:57:33.8453207Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:33.8453401Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:33.8453624Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data acquisition drift: 2ms    
+[2m2025-08-30T10:57:33.8453816Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::scheduler[0m[2m:[0m Task SpaceWeatherMonitoring scheduled at 25372574235275 with drift 2.0    
+[2m2025-08-30T10:57:33.8457186Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:33.8459273Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from AntennaPointingSensor    
+[2m2025-08-30T10:57:33.8460717Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from RadiationSensor    
+[2m2025-08-30T10:57:33.8463845Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 8    
+[2m2025-08-30T10:57:33.8469336Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 1.218ms    
+[2m2025-08-30T10:57:33.8471222Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
+[2m2025-08-30T10:57:33.8473778Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 9    
+[2m2025-08-30T10:57:33.8477073Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for AntennaPointingSensor: 1.802ms    
+[2m2025-08-30T10:57:33.8479966Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m AntennaPointingSensor data pushed to buffer    
+[2m2025-08-30T10:57:33.8482337Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 10    
+[2m2025-08-30T10:57:33.8484229Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for RadiationSensor: 2.354ms    
+[2m2025-08-30T10:57:33.8485418Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m RadiationSensor data pushed to buffer    
+[2m2025-08-30T10:57:34.3542742Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data acquisition drift: 11ms    
+[2m2025-08-30T10:57:34.3545593Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m Data generated from OnboardTelemetrySensor    
+[2m2025-08-30T10:57:34.3548009Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer len: 11    
+[2m2025-08-30T10:57:34.3550427Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::buffer[0m[2m:[0m Buffer insertion latency for OnboardTelemetrySensor: 0.501ms    
+[2m2025-08-30T10:57:34.3552338Z[0m [32m INFO[0m [2mrts_rust_assignment::satellite::sensor[0m[2m:[0m OnboardTelemetrySensor data pushed to buffer    
