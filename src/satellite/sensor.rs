@@ -111,7 +111,7 @@ impl Sensor{
             }
         });
     }
-    
+
     pub fn spawn(&mut self, buffer: Arc<PrioritizedBuffer>, sensor_command: Arc<Mutex<SensorCommand>>){
         let interval_ms = self.interval_ms.clone();
         let sensor_type = self.sensor_type.clone();
@@ -137,23 +137,23 @@ impl Sensor{
                 let drift = actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
                 info!("{:?} data acquisition drift: {}ms", sensor_type,drift);
                 expected_next_tick += Duration::from_millis(interval_ms);
-                
+
                 //check corrupt
                 let mut corrupt = false;
                 if corrupt_inject.load(std::sync::atomic::Ordering::SeqCst) {
                     match *sensor_command.lock().await{
                         SensorCommand::CDR => {
                             //Trigger & Simulate Corrupted Data Recovery
-                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            tokio::time::sleep(Duration::from_millis(10)).await;
                             corrupt_inject.store(false, std::sync::atomic::Ordering::SeqCst);
                             info!("{:?} recovered corrupt fault",sensor_type);
                             corrupt = false;
                         }
                         _ => corrupt = true
                     }
-                    
+
                 }
-                
+
                 let data = match sensor_type{
                     SensorType::AntennaPointingSensor => SensorData {
                         sensor_type: SensorType::AntennaPointingSensor,
@@ -168,7 +168,7 @@ impl Sensor{
                             polarization: rng.random_range(0.0..1.0),
                         },
                         corrupt_status: corrupt,
-                        
+
                     },
                     SensorType::OnboardTelemetrySensor => SensorData {
                         sensor_type: SensorType::OnboardTelemetrySensor,
@@ -203,21 +203,22 @@ impl Sensor{
                         corrupt_status: corrupt,
                     },
                 };
+                
                 if delay_inject.load(std::sync::atomic::Ordering::SeqCst) {
                     match *sensor_command.lock().await{
                         SensorCommand::DDR => {
                             //Trigger & Simulate Delayed Data Recovery
-                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            tokio::time::sleep(Duration::from_millis(10)).await;
                             delay_inject.store(false, std::sync::atomic::Ordering::SeqCst);
                             info!("{:?} recovered delay fault",sensor_type);
                         },
                         _ => {
-                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            tokio::time::sleep(Duration::from_millis(500)).await;
                         } //simulate 5 sec delay
                     }
                 }
                 info!("Data generated from {:?}", data.sensor_type);
-                
+
                 match buffer.push(data).await {
                     Ok(_) => {
                         info!("{:?} data pushed to buffer", sensor_type);

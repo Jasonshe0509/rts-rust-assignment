@@ -27,8 +27,8 @@ pub struct Task{
     pub start_time: Option<Instant>, //Absolute start time
     pub deadline: Option<Instant>, // Absolute deadline
     pub data: Option<SensorData>,
-    pub delay_recovery_time: Option<u64>,
-    pub corrupt_recovery_time: Option<u64>,
+    pub delay_recovery_time: Option<Instant>,
+    pub corrupt_recovery_time: Option<Instant>,
     pub priority: u8,
 }
 
@@ -69,7 +69,7 @@ impl Task {
             self.task.name == TaskName::SpaceWeatherMonitoring {
             loop {
                 read_data_time = clock.now().duration_since(task_actual_start_time);
-                if read_data_time > Duration::from_millis(100) {
+                if read_data_time > Duration::from_millis(1000) {
                     warn!("{:?} task terminate due to data reading time exceed. \
                         Sensor data for task not received. Priority of data adjust to be increased.", self.task.name);
                     if let Some(c) = sensor_command.clone(){
@@ -79,28 +79,30 @@ impl Task {
                     return (None, None)
                 }
                 //info!("Buffer len: {}", buffer.len().await);
-                let sensor_data = buffer.pop().await.unwrap();
-                match self.task.name {
-                    TaskName::AntennaAlignment => {
-                        if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
-                            self.data = Some(sensor_data);
+                if !buffer.is_empty().await{
+                    let sensor_data = buffer.pop().await.unwrap();
+                    match self.task.name {
+                        TaskName::AntennaAlignment => {
+                            if sensor_data.sensor_type == SensorType::AntennaPointingSensor {
+                                self.data = Some(sensor_data);
+                                break;
+                            }
+                        }
+                        TaskName::HealthMonitoring => {
+                            if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
+                                self.data = Some(sensor_data);
+                                break;
+                            }
+                        }
+                        TaskName::SpaceWeatherMonitoring => {
+                            if sensor_data.sensor_type == SensorType::RadiationSensor {
+                                self.data = Some(sensor_data);
+                                break;
+                            }
+                        }
+                        _ => {
                             break;
                         }
-                    }
-                    TaskName::HealthMonitoring => {
-                        if sensor_data.sensor_type == SensorType::OnboardTelemetrySensor {
-                            self.data = Some(sensor_data);
-                            break;
-                        }
-                    }
-                    TaskName::SpaceWeatherMonitoring => {
-                        if sensor_data.sensor_type == SensorType::RadiationSensor {
-                            self.data = Some(sensor_data);
-                            break;
-                        }
-                    }
-                    _ => {
-                        break;
                     }
                 }
             }
@@ -124,14 +126,13 @@ impl Task {
                         msg));
                     match self.corrupt_recovery_time{
                         Some(mut recovery_time) => {
-                            recovery_time += 1;
-                            self.corrupt_recovery_time = Some(recovery_time);
-                            if recovery_time > 200{
-                                error!{"Mission Abort! due to fault of corrupted sensor data"}
+                            let recovery_dur = Instant::now().duration_since(recovery_time).as_millis() as f64;
+                            if recovery_dur > 200.0{
+                                error!{"Mission Abort! due to fault of corrupted sensor data, recovery time exceed 200ms"}
                             }
                         },
                         None => {
-                            self.corrupt_recovery_time = Some(0);
+                            self.corrupt_recovery_time = Some(Instant::now());
                             if let Some(c) = sensor_command.clone(){
                                 let mut command = c.lock().await;
                                 *command = SensorCommand::CDR;
@@ -143,7 +144,8 @@ impl Task {
                     //check recovery
                     match self.corrupt_recovery_time{
                         Some(recovery_time) => {
-                            let msg = format!("{:?} task received recovered {:?} data without corrupt",self.task.name,data.sensor_type).to_string();
+                            let msg = format!("{:?} task received recovered {:?} data without corrupt with recovery time: {:?}ms"
+                                              ,self.task.name,data.sensor_type, Instant::now().duration_since(recovery_time).as_millis() as f64).to_string();
                             info!("{}",msg);
                             self.corrupt_recovery_time = None;
                             if let Some(c) = sensor_command.clone(){
@@ -161,7 +163,7 @@ impl Task {
             }
             None => {}
         }
-        
+
         match self.task.name {
             TaskName::HealthMonitoring => {
                 if !data.unwrap().corrupt_status{
@@ -229,15 +231,14 @@ impl Task {
                         FaultType::Fault,FaultSituation::DelayedData,
                        msg));
                     match self.delay_recovery_time{
-                        Some(mut recovery_time) => {
-                            recovery_time += 1;
-                            self.delay_recovery_time = Some(recovery_time);
-                            if recovery_time > 200{
-                                error!{"Mission Abort! due to fault of delayed sensor data"}
+                        Some(recovery_time) => {
+                            let recovery_dur = Instant::now().duration_since(recovery_time).as_millis() as f64;
+                            if recovery_dur > 200.0{
+                                error!{"Mission Abort! due to fault of delayed sensor data, recovery time exceed 200ms"}
                             }
                         },
                         None => {
-                            self.delay_recovery_time = Some(0);
+                            self.delay_recovery_time = Some(Instant::now());
                             if let Some(c) = sensor_command.clone(){
                                 let mut command = c.lock().await;
                                 *command = SensorCommand::DDR;
@@ -249,7 +250,8 @@ impl Task {
                     //check recovery
                     match self.delay_recovery_time{
                         Some(recovery_time) => {
-                            info!("{:?} task received recovered {:?} data without delay",self.task.name,data.sensor_type,);
+                            info!("{:?} task received recovered {:?} data without delay with recovery time: {}ms"
+                                ,self.task.name,data.sensor_type,Instant::now().duration_since(recovery_time).as_millis() as f64);
                             self.delay_recovery_time = None;
                             if let Some(c) = sensor_command.clone(){
                                 let mut command = c.lock().await;

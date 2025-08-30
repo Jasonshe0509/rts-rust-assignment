@@ -10,9 +10,18 @@ use rts_rust_assignment::satellite::command::{SchedulerCommand,SensorCommand};
 use rts_rust_assignment::satellite::FIFO_queue::FifoQueue;
 use rts_rust_assignment::satellite::downlink::Downlink;
 
+use log::info;
+
+use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
+use tokio::task::JoinHandle;
+use rts_rust_assignment::util::log_generator::LogGenerator;
+
 #[tokio::main]
 async fn main(){
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    LogGenerator::new("satellite");
+    info!("Starting Satellite System...");
+    
+    //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
     let sensor_buffer = Arc::new(PrioritizedBuffer::new(50));
 
@@ -22,9 +31,9 @@ async fn main(){
     let mut antenna_sensor = Sensor::new(SensorType::AntennaPointingSensor,1500);
 
     //initialize tasks to be scheduled
-    let health_monitoring = TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(500));
-    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring, Some(2000), Duration::from_millis(1000));
-    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment, Some(3000), Duration::from_millis(1500));
+    let health_monitoring = TaskType::new(TaskName::HealthMonitoring, Some(2000), Duration::from_millis(1500));
+    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring, Some(3000), Duration::from_millis(2000));
+    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment, Some(4000), Duration::from_millis(3000));
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
 
     
@@ -46,10 +55,12 @@ async fn main(){
     
     let channel = conn.create_channel().await
         .expect("Cannot create channel");
+    
 
     //initialize downlink
-    let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel,"telemetry_queue".to_string());
-
+    let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel.clone(),"telemetry_queue".to_string());
+    
+    
     //Background task for sensor data acquisition
     telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone());
     radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone());
@@ -78,6 +89,11 @@ async fn main(){
     antenna_sensor.corrupt_fault_injection();
     
     //Simulation time of this program
-    tokio::time::sleep(Duration::from_secs(20)).await;
-    
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    if let Err(e) = conn.close(0, "Normal shutdown").await {
+        eprintln!("Error closing connection: {:?}", e);
+    }
+    drop(conn);
+    drop(channel);
+
 }
