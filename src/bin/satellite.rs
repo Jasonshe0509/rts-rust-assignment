@@ -110,7 +110,6 @@ async fn main(){
     //Background task for downlink of window controller & process data & downlink data
     background_tasks.push(downlink.process_data());
     background_tasks.push(downlink.downlink_data(5000));
-    //background_tasks.push(downlink.send_data());
 
     //Background task for simulation of delayed sensor data fault injection
     background_tasks.push(telemetry_sensor.delay_fault_injection());

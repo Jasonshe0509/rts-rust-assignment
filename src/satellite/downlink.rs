@@ -200,34 +200,6 @@ impl Downlink {
         });
         handle
     }
-
-    // pub fn send_data(&self) -> JoinHandle<()> {
-    //     let transmission_queue = self.transmission_queue.clone();
-    //     let window = self.window.clone();
-    //     let downlink_queue_name = self.downlink_queue_name.clone();
-    //     let channel = self.channel.clone();
-    //     
-    //     let handle = tokio::spawn(async move {
-    //         loop {
-    //             if window.load(Ordering::SeqCst) {
-    //                 if let Some(packet) = transmission_queue.pop().await {
-    //                     let msg = packet.as_slice();
-    //                     if let Err(e) = channel.basic_publish(
-    //                         "",
-    //                         &downlink_queue_name,
-    //                         BasicPublishOptions::default(),
-    //                         msg,
-    //                         BasicProperties::default().with_timestamp(Utc::now().timestamp() as u64),
-    //                     ).await {
-    //                         warn!("Can't send data further: connection is closed, simulation done...");
-    //                     } else {
-    //                         info!("Message sent");
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     });
-    //     handle
-    // }
+    
 
 }
