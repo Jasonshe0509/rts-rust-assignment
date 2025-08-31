@@ -1,5 +1,8 @@
+use crate::ground::ground_service::GroundService;
 use crate::ground::packet_validator::PacketValidator;
-use crate::satellite::downlink::PacketizeData;
+use crate::ground::scheduler::Scheduler;
+use crate::ground::system_state::SystemState;
+use crate::satellite::downlink::{PacketizeData, TransmissionData};
 use crate::satellite::fault_message::FaultMessageData;
 use crate::satellite::sensor::SensorData;
 use crate::util::compressor::Compressor;
@@ -10,20 +13,31 @@ use lapin::{
     options::{BasicConsumeOptions, QueueDeclareOptions},
     types::FieldTable,
 };
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 pub struct Receiver {
     validator: PacketValidator,
     channel: Channel,
     queue_name: String,
+    scheduler: Arc<Mutex<Scheduler>>,
+    system_state: Arc<Mutex<SystemState>>,
 }
 impl Receiver {
-    pub fn new(channel: Channel, queue_name: &str) -> Self {
+    pub fn new(
+        channel: Channel,
+        queue_name: &str,
+        scheduler: Arc<Mutex<Scheduler>>,
+        system_state: Arc<Mutex<SystemState>>,
+    ) -> Self {
         Self {
             validator: PacketValidator::new(),
             channel,
             queue_name: queue_name.to_string(),
+            scheduler,
+            system_state,
         }
     }
 
@@ -70,12 +84,23 @@ impl Receiver {
                 //decoding within 3ms
                 let start = Instant::now();
                 let packet: PacketizeData = bincode::deserialize(&delivery.data).unwrap();
-                let fault: FaultMessageData;
-                let sensor: SensorData;
-                if (packet.packet_id.starts_with("FMI")) {
-                    fault = Compressor::decompress(&packet.data);
-                } else {
-                    sensor = Compressor::decompress(&packet.data);
+                let fault: Option<FaultMessageData>;
+                let sensor: Option<SensorData>;
+                let transmission_data: TransmissionData =
+                    Compressor::decompress(packet.data.clone());
+                match transmission_data {
+                    TransmissionData::Fault(fault_message_data) => {
+                        fault = Some(fault_message_data);
+                        sensor = None;
+                    }
+                    TransmissionData::Sensor(sensor_data) => {
+                        sensor = Some(sensor_data);
+                        fault = None;
+                    }
+                    _ => {
+                        error!("Received unexpected transmission data type");
+                        continue;
+                    }
                 }
                 let elapsed = start.elapsed();
                 if elapsed.as_millis() > 3 {
@@ -90,7 +115,20 @@ impl Receiver {
                     packet.expected_arrival_time.into(),
                 );
                 //check missing/delayed packets
-                self.validator.validate_packet(&packet, &drift);
+                if (sensor.is_some()) {
+                    self.validator
+                        .validate_packet(
+                            &packet,
+                            &drift,
+                            &sensor.unwrap().sensor_type,
+                            &self.scheduler,
+                            &self.system_state,
+                        )
+                        .await;
+                } else if (fault.is_some()) {
+                    GroundService::fault_detection(&fault.unwrap().situation, &self.system_state)
+                        .await;
+                }
 
                 delivery.ack(BasicAckOptions::default()).await.unwrap();
             }
