@@ -23,7 +23,7 @@ async fn main(){
 
     //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
-    let sensor_buffer = Arc::new(PrioritizedBuffer::new(50));
+    let sensor_buffer = Arc::new(PrioritizedBuffer::new(300));
 
     let tel_delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
     let tel_corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
@@ -62,8 +62,8 @@ async fn main(){
     let antenna_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
 
     //initialize downlink buffer & transmission queue
-    let downlink_buffer = Arc::new(FifoQueue::new(50));
-    let transmission_queue = Arc::new(FifoQueue::new(100));
+    let downlink_buffer = Arc::new(FifoQueue::new(100));
+    let transmission_queue = Arc::new(FifoQueue::new(300));
 
     //initialize task scheduler
     let scheduler = Scheduler::new(sensor_buffer.clone(),downlink_buffer.clone(),task_to_schedule);
@@ -108,9 +108,9 @@ async fn main(){
     }));
 
     //Background task for downlink of window controller & process data & downlink data
-    background_tasks.push(downlink.start_window_controller(5000));
     background_tasks.push(downlink.process_data());
-    background_tasks.push(downlink.send_data());
+    background_tasks.push(downlink.downlink_data(5000));
+    //background_tasks.push(downlink.send_data());
 
     //Background task for simulation of delayed sensor data fault injection
     background_tasks.push(telemetry_sensor.delay_fault_injection());

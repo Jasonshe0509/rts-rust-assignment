@@ -83,7 +83,7 @@ impl Task {
                     }
                     return (None, None)
                 }
-                //info!("Buffer len: {}", buffer.len().await);
+                
                 match buffer.pop().await{
                     Some(sensor_data) => {
                         match self.task.name {

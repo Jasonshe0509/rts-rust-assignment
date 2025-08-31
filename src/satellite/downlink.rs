@@ -63,9 +63,12 @@ impl Downlink {
         }
     }
 
-    pub fn start_window_controller(&self, interval_ms: u64) -> JoinHandle<()> {
-        let window = self.window.clone();
+    pub fn downlink_data(&self, interval_ms: u64) -> JoinHandle<()> {
         let expected_window_open_time = self.expected_window_open_time.clone();
+        let transmission_queue = self.transmission_queue.clone();
+        let window = self.window.clone();
+        let downlink_queue_name = self.downlink_queue_name.clone();
+        let channel = self.channel.clone();
         let handle = tokio::spawn(async move {
             let now = Instant::now();
             let clock = Clock::new();
@@ -89,7 +92,36 @@ impl Downlink {
                     //self.window.store(false, Ordering::SeqCst);
                 }
                 expected_next_tick = actual_start_time + Duration::from_millis(interval_ms);
-
+                
+                let send_until = Instant::now() + Duration::from_millis(30);
+                
+                while Instant::now() < send_until {
+                    if let Some(packet) = transmission_queue.pop().await {
+                        let msg = packet.as_slice();
+                        if let Err(e) = channel
+                            .basic_publish(
+                                "",
+                                &downlink_queue_name,
+                                BasicPublishOptions::default(),
+                                msg,
+                                BasicProperties::default()
+                                    .with_timestamp(Utc::now().timestamp() as u64),
+                            )
+                            .await
+                        {
+                            warn!(
+                            "Can't send data further: connection is closed, closing channel..."
+                        );
+                            break; // exit sending early
+                        } else {
+                            info!("Message sent");
+                        }
+                    } else {
+                        // queue empty → yield briefly before retrying
+                        tokio::task::yield_now().await;
+                    }
+                }
+                
                 tokio::time::sleep(Duration::from_millis(30)).await; //open for 30 ms
                 window.store(false, Ordering::SeqCst);
                 info!("Downlink Window Closed");
@@ -140,8 +172,9 @@ impl Downlink {
                     }
                     let compress_sensor_data = Compressor::compress(data);
 
+                    let expected_arrival_time = expected_window_open_time.lock().await.clone();
 
-                    let packet = PacketizeData::new(id, expected_window_open_time.lock().await.clone(),
+                    let packet = PacketizeData::new(id, expected_arrival_time,
                                                     compress_sensor_data.len() as f64, compress_sensor_data);
 
                     let compress_packet = Compressor::compress(packet);
@@ -161,41 +194,40 @@ impl Downlink {
                         warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
 
                     }
-                    tokio::time::sleep(Duration::from_millis(5000)).await;
+                    //tokio::time::sleep(Duration::from_millis(5000)).await;
                 }
             }
         });
         handle
     }
 
-    pub fn send_data(&self) -> JoinHandle<()> {
-        let transmission_queue = self.transmission_queue.clone();
-        let window = self.window.clone();
-        let downlink_queue_name = self.downlink_queue_name.clone();
-        let channel = self.channel.clone();
-        
-        let handle = tokio::spawn(async move {
-            loop {
-                if window.load(Ordering::SeqCst) {
-                    if let Some(packet) = transmission_queue.pop().await {
-                        let msg = packet.as_slice();
-                        if let Err(e) = channel.basic_publish(
-                            "",
-                            &downlink_queue_name,
-                            BasicPublishOptions::default(),
-                            msg,
-                            BasicProperties::default().with_timestamp(Utc::now().timestamp() as u64),
-                        ).await {
-                            warn!("Can't send data further: connection is closed, simulation done...");
-                        } else {
-                            info!("Message sent");
-                        }
-                    }
-                }
-
-            }
-        });
-        handle
-    }
+    // pub fn send_data(&self) -> JoinHandle<()> {
+    //     let transmission_queue = self.transmission_queue.clone();
+    //     let window = self.window.clone();
+    //     let downlink_queue_name = self.downlink_queue_name.clone();
+    //     let channel = self.channel.clone();
+    //     
+    //     let handle = tokio::spawn(async move {
+    //         loop {
+    //             if window.load(Ordering::SeqCst) {
+    //                 if let Some(packet) = transmission_queue.pop().await {
+    //                     let msg = packet.as_slice();
+    //                     if let Err(e) = channel.basic_publish(
+    //                         "",
+    //                         &downlink_queue_name,
+    //                         BasicPublishOptions::default(),
+    //                         msg,
+    //                         BasicProperties::default().with_timestamp(Utc::now().timestamp() as u64),
+    //                     ).await {
+    //                         warn!("Can't send data further: connection is closed, simulation done...");
+    //                     } else {
+    //                         info!("Message sent");
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     });
+    //     handle
+    // }
 
 }

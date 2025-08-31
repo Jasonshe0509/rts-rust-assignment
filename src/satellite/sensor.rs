@@ -258,7 +258,7 @@ impl Sensor{
                 //check delay
                 if delay_inject.load(std::sync::atomic::Ordering::SeqCst) {
                     info!("{:?} simulate delay data sleep", sensor_type);
-                    tokio::time::sleep(Duration::from_millis(200)).await; //simulate 200 delay
+                    tokio::time::sleep(Duration::from_millis(200)).await; //simulate 190 delay
                 }
                 if delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
                     match *sensor_command.lock().await{
@@ -306,6 +306,7 @@ impl Sensor{
                 match buffer.push(data).await {
                     Ok(_) => {
                         info!("{:?} data pushed to buffer", sensor_type);
+                        info!("Sensor buffer len: {}", buffer.len().await);
                     },
                     Err(e) => {
                         match sensor_type{

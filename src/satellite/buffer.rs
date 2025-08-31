@@ -19,7 +19,7 @@ impl PrioritizedBuffer {
 
     pub async fn push(&self, data: SensorData) -> Result<(), String> {
         let mut heap = self.heap.lock().await;
-        info!("Buffer len: {}", heap.len());
+        //info!("Buffer len: {}", heap.len());
         if heap.len() >= self.capacity {
             // Buffer full, drop lowest-priority data if new data has higher priority
             if let Some(highest) = heap.peek_min(){
