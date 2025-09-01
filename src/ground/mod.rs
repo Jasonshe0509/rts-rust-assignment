@@ -6,4 +6,4 @@ mod command;
 mod uplink;
 mod ground_service;
 pub mod system_state;
-mod fault_event;
+pub mod fault_event;

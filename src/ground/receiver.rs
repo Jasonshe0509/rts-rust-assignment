@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
+use crate::ground::fault_event::FaultEvent;
 
 pub struct Receiver {
     validator: PacketValidator,
@@ -24,6 +25,7 @@ pub struct Receiver {
     queue_name: String,
     scheduler: Arc<Mutex<Scheduler>>,
     system_state: Arc<Mutex<SystemState>>,
+    fault_event: FaultEvent,
 }
 impl Receiver {
     pub fn new(
@@ -31,6 +33,7 @@ impl Receiver {
         queue_name: &str,
         scheduler: Arc<Mutex<Scheduler>>,
         system_state: Arc<Mutex<SystemState>>,
+        fault_event: FaultEvent,
     ) -> Self {
         Self {
             validator: PacketValidator::new(),
@@ -38,6 +41,7 @@ impl Receiver {
             queue_name: queue_name.to_string(),
             scheduler,
             system_state,
+            fault_event,
         }
     }
 
@@ -126,7 +130,7 @@ impl Receiver {
                         )
                         .await;
                 } else if (fault.is_some()) {
-                    GroundService::fault_detection(&fault.unwrap().situation, &self.system_state)
+                    GroundService::fault_detection(&fault.unwrap(), &self.system_state, &mut self.fault_event)
                         .await;
                 }
 

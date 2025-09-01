@@ -9,6 +9,7 @@ use rts_rust_assignment::util::log_generator::LogGenerator;
 use tokio;
 use tokio::sync::Mutex;
 use tracing::info;
+use rts_rust_assignment::ground::fault_event::FaultEvent;
 use rts_rust_assignment::ground::system_state::SystemState;
 
 #[tokio::main]
@@ -25,12 +26,14 @@ async fn main() {
     
     let sender = Sender::new(channel.clone(), "command_queue");
     
+    let fault_event = FaultEvent::new();
+    
     let system_state = Arc::new(Mutex::new(SystemState::new()));
 
     let scheduler = Arc::new(Mutex::new(Scheduler::new(sender, Arc::clone(&system_state))));
     let scheduler_for_receiver = Arc::clone(&scheduler);
 
-    let mut receiver = Receiver::new(channel.clone(), "telemetry_queue", scheduler_for_receiver, Arc::clone(&system_state));
+    let mut receiver = Receiver::new(channel.clone(), "telemetry_queue", scheduler_for_receiver, Arc::clone(&system_state), fault_event);
     
     tokio::join!(
         receiver.run(),
