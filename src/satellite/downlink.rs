@@ -7,7 +7,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
 use lapin::{BasicProperties, Channel};
-use lapin::options::BasicPublishOptions;
+use lapin::options::{BasicPublishOptions, QueueDeclareOptions};
+use lapin::types::FieldTable;
 use tokio::sync::Mutex;
 use log::{info, error,warn};
 use quanta::Clock;
@@ -70,6 +71,7 @@ impl Downlink {
         let downlink_queue_name = self.downlink_queue_name.clone();
         let channel = self.channel.clone();
         let handle = tokio::spawn(async move {
+            channel.queue_declare(&downlink_queue_name, QueueDeclareOptions::default(), FieldTable::default()).await.expect("Failed to declare queue");
             let now = Instant::now();
             let clock = Clock::new();
             let mut interval = tokio::time::interval_at(now + Duration::from_millis(interval_ms), Duration::from_millis(interval_ms));
@@ -114,7 +116,7 @@ impl Downlink {
                         );
                             break; // exit sending early
                         } else {
-                            info!("Message sent");
+                            info!("Packet sent");
                         }
                     } else {
                         // queue empty → yield briefly before retrying
@@ -177,11 +179,11 @@ impl Downlink {
                     let packet = PacketizeData::new(id, expected_arrival_time,
                                                     compress_sensor_data.len() as f64, compress_sensor_data);
 
-                    let compress_packet = Compressor::compress(packet);
+                    let compress_packet = bincode::serialize(&packet).unwrap();
 
                     transmission_queue.push(compress_packet).await;
 
-                    //transmission queue latency
+                    //transmission queue latency**********************
                     let latency = clock.now().duration_since(before_queue).as_millis() as f64;
                     info!("Packet insert to transmission queue latency: {}ms",latency);
 
@@ -194,6 +196,12 @@ impl Downlink {
                         warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
 
                     }
+
+                    //transmission queue fill rate
+                    let queue_len = transmission_queue.len().await;
+                    let queue_capacity = transmission_queue.capacity;
+                    let fill_rate = (queue_len as f64 / queue_capacity as f64) * 100.0;
+                    info!("Transmission queue fill rate: {:2}%",fill_rate);
                 }
             }
         });

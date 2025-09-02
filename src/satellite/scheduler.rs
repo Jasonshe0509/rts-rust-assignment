@@ -3,7 +3,7 @@ use crate::satellite::task::{Task, TaskName, TaskType};
 use crate::satellite::command::{SchedulerCommand, SensorCommand};
 use std::sync::Arc;
 use tokio::time::{Duration, Instant};
-use log::{info, log, warn};
+use log::{error, info, log, warn};
 use std::collections::BinaryHeap;
 use std::sync::atomic::AtomicBool;
 use quanta::Clock;
@@ -26,7 +26,7 @@ impl Scheduler {
         Scheduler {
             sensor_buffer: s_buffer,
             downlink_buffer: d_buffer,
-            task_queue: Arc::new(Mutex::new(BinaryHeap::new())),
+            task_queue: Arc::new(Mutex::new(BinaryHeap::with_capacity(1000))),
             tasks: tasks_list,
         }
     }
@@ -36,9 +36,6 @@ impl Scheduler {
         let now = clock.now();
         match command {
             SchedulerCommand::TC(task_type) => {
-            // SchedulerCommand::TC(task_type) |
-            // SchedulerCommand::SM(task_type) |
-            // SchedulerCommand::SO(task_type) => {
                 let task_name = task_type.name.clone();
                 let process_time = task_type.process_time.clone().as_millis() as u64;
                 let new_task = Task {
@@ -85,7 +82,10 @@ impl Scheduler {
                 info!("Preempted Re-request {:?} Task", task_name);
             }
         }
-
+        
+        if self.task_queue.lock().await.len() == 1000 {
+            error!("Starvation occur, some tasks are never getting CPU time for execution")
+        }
     }
 
     pub fn schedule_task(&self) -> Vec<JoinHandle<()>>{
@@ -113,6 +113,9 @@ impl Scheduler {
                         priority: 1
                     };
                     task_queue.lock().await.push(new_task);
+                    if task_queue.lock().await.len() == 1000 {
+                        error!("Starvation occur, some tasks are never getting CPU time for execution")
+                    }
                 }
             });
             schedule_tasks_handle.push(h);
@@ -120,7 +123,7 @@ impl Scheduler {
         schedule_tasks_handle
     }
 
-    pub async fn execute_task(&self, execution_command: Arc<Mutex<Option<SchedulerCommand>>>,
+    pub async fn execute_task(&self, scheduler_command: Arc<Mutex<Option<SchedulerCommand>>>,
     telemetry_command: Arc<Mutex<SensorCommand>>, radiation_command: Arc<Mutex<SensorCommand>>,
                               antenna_command: Arc<Mutex<SensorCommand>>, is_active: Arc<AtomicBool>,
                               tel_delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>, 
@@ -141,10 +144,10 @@ impl Scheduler {
         
         loop {
             //Check for preemption
-            let mut guard = execution_command.lock().await;
+            let mut guard = scheduler_command.lock().await;
             if let Some(command) = guard.take() {
-                drop(guard);
                 self.preempt(command).await;
+                *guard = None;
             }else{
                 drop(guard);
             }
@@ -155,21 +158,21 @@ impl Scheduler {
                 match task.task.name {
                     TaskName::HealthMonitoring(rerequest)  => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                execution_command.clone(), Some(telemetry_command.clone()),
+                                                    scheduler_command.clone(), Some(telemetry_command.clone()),
                                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                 tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                 tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                     }
                     TaskName::SpaceWeatherMonitoring(rerequest) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                execution_command.clone(), Some(radiation_command.clone()),
+                                                    scheduler_command.clone(), Some(radiation_command.clone()),
                                                     rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                     rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                     rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                     }
                     TaskName::AntennaAlignment(rerequest) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                execution_command.clone(), Some(antenna_command.clone()),
+                                                    scheduler_command.clone(), Some(antenna_command.clone()),
                                                     ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                     ant_delay_stat.clone(),ant_corrupt_stat.clone(),
                                                     ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
@@ -180,21 +183,21 @@ impl Scheduler {
                         match sensor_type {
                             SensorType::OnboardTelemetrySensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            execution_command.clone(), Some(telemetry_command.clone()),
+                                                            scheduler_command.clone(), Some(telemetry_command.clone()),
                                                             tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                             tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                             tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                             }
                             SensorType::RadiationSensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            execution_command.clone(), Some(radiation_command.clone()),
+                                                            scheduler_command.clone(), Some(radiation_command.clone()),
                                                             rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                             rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                             rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                             }
                             SensorType::AntennaPointingSensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            execution_command.clone(), Some(antenna_command.clone()),
+                                                            scheduler_command.clone(), Some(antenna_command.clone()),
                                                             ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                             ant_delay_stat.clone(),ant_corrupt_stat.clone(),
                                                             ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
@@ -203,7 +206,7 @@ impl Scheduler {
                     }
                     _ => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                execution_command.clone(), None,
+                                                    scheduler_command.clone(), None,
                                                     Arc::new(Mutex::new(None)),Arc::new(Mutex::new(None)),
                                                     tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                     tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;

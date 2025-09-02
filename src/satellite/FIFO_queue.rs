@@ -14,17 +14,16 @@ impl<T: Clone> FifoQueue<T> {
             queue: Mutex::new(VecDeque::with_capacity(capacity)),
         }
     }
-
-    // Push data into buffer (drop oldest if full)
+    
     pub async fn push(&self, item: T) {
         let mut q = self.queue.lock().await;
         if q.len() >= self.capacity {
-            q.pop_front(); // drop oldest
+            q.pop_front();
         }
         q.push_back(item);
     }
 
-    // Pop oldest data 
+ 
     pub async fn pop(&self) -> Option<T> {
         self.queue.lock().await.pop_front()
     }

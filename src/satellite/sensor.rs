@@ -23,7 +23,7 @@ pub struct SensorData {
     pub corrupt_status: bool,
 }
 
-#[derive(Debug, Clone, PartialEq,Serialize, Deserialize, Eq)]
+#[derive(Debug, Clone, PartialEq,Serialize, Deserialize, Eq, Hash)]
 pub enum SensorType{
     RadiationSensor,
     OnboardTelemetrySensor,

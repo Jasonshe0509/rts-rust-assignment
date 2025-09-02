@@ -12,6 +12,7 @@ use quanta::{Instant, Clock};
 use tokio::sync::Mutex;
 use tracing::Instrument;
 use crate::satellite::buffer::SensorPrioritizedBuffer;
+use crate::satellite::config;
 use crate::satellite::fault_message::{FaultMessageData, FaultSituation, FaultType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +53,7 @@ impl TaskType{
 
 impl Task {
     pub async fn execute(&mut self, buffer: Arc<SensorPrioritizedBuffer>,
-                         execution_command: Arc<Mutex<Option<SchedulerCommand>>>,
+                         scheduler_command: Arc<Mutex<Option<SchedulerCommand>>>,
                          sensor_command: Option<Arc<Mutex<SensorCommand>>>,
                          delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
                          corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
@@ -143,8 +144,20 @@ impl Task {
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::CorruptedData(data.sensor_type.clone()),
                             msg, now2));
-                        *execution_command.lock().await = Some(SchedulerCommand::CDR(
-                            TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(10)),data.clone()));
+                        loop{
+                            let start_update_command_time = clock.now();
+                            let mut guard = scheduler_command.lock().await;
+                            if guard.is_none(){
+                                *guard = Some(SchedulerCommand::CDR(
+                                    TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone()));
+                                break;
+                            }
+                            if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
+                                error!("{:?} task failed to update schedule command for request of corrupted data recovery within 100ms", self.task.name)
+                            }
+                            // yield to allow other tasks to run
+                            tokio::task::yield_now().await;
+                        }
                         corrupt_stat.store(true, std::sync::atomic::Ordering::SeqCst);
                         return (None, fault);
                     } else if (!data.corrupt_status) && corrupt_stat.load(std::sync::atomic::Ordering::SeqCst) {
@@ -190,8 +203,20 @@ impl Task {
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::DelayedData(data.sensor_type.clone()),
                             msg, now2));
-                        *execution_command.lock().await = Some(SchedulerCommand::DDR(
-                            TaskType::new(TaskName::RecoverDelayedData,None,Duration::from_millis(10)),data.clone()));
+                        loop{
+                            let start_update_command_time = clock.now();
+                            let mut guard = scheduler_command.lock().await;
+                            if guard.is_none(){
+                                *guard = Some(SchedulerCommand::CDR(
+                                    TaskType::new(TaskName::RecoverDelayedData,None,Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)),data.clone()));
+                                break;
+                            }
+                            if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
+                                error!("{:?} task failed to update schedule command for request of delayed data recovery within 100ms", self.task.name)
+                            }
+                            // yield to allow other tasks to run
+                            tokio::task::yield_now().await;
+                        }
                         delay_stat.store(true, std::sync::atomic::Ordering::SeqCst);
                         return (None, fault)
                     } else if (!(diff > chrono::Duration::milliseconds(200))) && delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
@@ -221,8 +246,8 @@ impl Task {
                             SensorPayloadDataType::TelemetryData { power, temperature, location } => {
                                 if temperature > 105.0 {
                                     warn!("Temperature is too high, thermal control needed");
-                                    *execution_command.lock().await = Some(SchedulerCommand::TC
-                                        (TaskType::new(TaskName::ThermalControl,None,Duration::from_millis(10))));
+                                    *scheduler_command.lock().await = Some(SchedulerCommand::TC
+                                        (TaskType::new(TaskName::ThermalControl,None,Duration::from_millis(config::THERMAL_CONTROL_TASK_DURATION))));
                                 }
                             }
                             _ => ()
@@ -320,7 +345,7 @@ impl Task {
         }
         let task_actual_end_time = clock.now();
         if task_actual_end_time > self.deadline {
-            warn!("{:?} Completion delay for task {:?}: {:?}",actual_processing_time, self.task.name, task_actual_end_time.duration_since(self.deadline));
+            warn!("Completion delay for task {:?}: {:?}", self.task.name, task_actual_end_time.duration_since(self.deadline));
         }
         (self.data.clone(), fault)
     }

@@ -9,10 +9,19 @@ use rts_rust_assignment::satellite::scheduler::Scheduler;
 use rts_rust_assignment::satellite::command::{SchedulerCommand,SensorCommand};
 use rts_rust_assignment::satellite::FIFO_queue::FifoQueue;
 use rts_rust_assignment::satellite::downlink::Downlink;
+use rts_rust_assignment::satellite::receiver::SatelliteReceiver;
 use log::{info,warn};
 use rts_rust_assignment::util::log_generator::LogGenerator;
 use std::sync::atomic::{AtomicBool, Ordering};
 use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
+use rts_rust_assignment::satellite::config::{CONNECTION_ADDRESS,DOWNLINK_INTERVAL,
+                                             GROUND_DOWNLINK_QUEUE_NAME,SATELLITE_DOWNLINK_QUEUE_NAME,
+                                             SENSOR_BUFFER_SIZE,TELEMETRY_SENSOR_INTERVAL,
+                                             RADIATION_SENSOR_INTERVAL,ANTENNA_SENSOR_INTERVAL,
+                                             HEALTH_MONITORING_TASK_INTERVAL,HEALTH_MONITORING_TASK_DURATION,
+                                             SPACE_WEATHER_MONITORING_TASK_INTERVAL,SPACE_WEATHER_MONITORING_TASK_DURATION,
+                                             ANTENNA_MONITORING_TASK_INTERVAL,ANTENNA_MONITORING_TASK_DURATION,
+                                             TRANSMISSION_QUEUE_SIZE,DOWNLINK_BUFFER_SIZE};
 
 #[tokio::main]
 async fn main(){
@@ -21,7 +30,7 @@ async fn main(){
 
     //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
-    let sensor_buffer = Arc::new(SensorPrioritizedBuffer::new(300));
+    let sensor_buffer = Arc::new(SensorPrioritizedBuffer::new(SENSOR_BUFFER_SIZE));
 
     let tel_delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
     let tel_corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
@@ -45,19 +54,22 @@ async fn main(){
 
     //initialize sensor
     let mut telemetry_sensor = Sensor::new(SensorType::OnboardTelemetrySensor,
-                                           50,tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
+                                           TELEMETRY_SENSOR_INTERVAL,tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                             tel_delay_status.clone(),tel_corrupt_status.clone(),tel_inject_delay.clone(),tel_inject_corrupt.clone());
     let mut radiation_sensor = Sensor::new(SensorType::RadiationSensor,
-                                           100,rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
+                                           RADIATION_SENSOR_INTERVAL,rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                            rad_delay_status.clone(),rad_corrupt_status.clone(),rad_inject_delay.clone(),rad_inject_corrupt.clone());
     let mut antenna_sensor = Sensor::new(SensorType::AntennaPointingSensor,
-                                         150,ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
+                                         ANTENNA_SENSOR_INTERVAL,ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                          ant_delay_status.clone(),ant_corrupt_status.clone(),ant_inject_delay.clone(),ant_inject_corrupt.clone());
 
     //initialize tasks to be scheduled
-    let health_monitoring = TaskType::new(TaskName::HealthMonitoring(false), Some(1000), Duration::from_millis(100));
-    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring(false), Some(2000), Duration::from_millis(150));
-    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment(false), Some(3000), Duration::from_millis(200));
+    let health_monitoring = TaskType::new(TaskName::HealthMonitoring(false), 
+                                          Some(HEALTH_MONITORING_TASK_INTERVAL), Duration::from_millis(HEALTH_MONITORING_TASK_DURATION));
+    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring(false), 
+                                                 Some(SPACE_WEATHER_MONITORING_TASK_INTERVAL), Duration::from_millis(SPACE_WEATHER_MONITORING_TASK_DURATION));
+    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment(false), 
+                                           Some(ANTENNA_MONITORING_TASK_INTERVAL), Duration::from_millis(ANTENNA_MONITORING_TASK_DURATION));
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
 
     
@@ -67,8 +79,8 @@ async fn main(){
     let antenna_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
 
     //initialize downlink buffer & transmission queue
-    let downlink_buffer = Arc::new(FifoQueue::new(100));
-    let transmission_queue = Arc::new(FifoQueue::new(300));
+    let downlink_buffer = Arc::new(FifoQueue::new(DOWNLINK_BUFFER_SIZE));
+    let transmission_queue = Arc::new(FifoQueue::new(TRANSMISSION_QUEUE_SIZE));
 
     //initialize task scheduler
     let scheduler = Scheduler::new(sensor_buffer.clone(),downlink_buffer.clone(),task_to_schedule);
@@ -77,7 +89,7 @@ async fn main(){
     let is_active = Arc::new(AtomicBool::new(false));
     
     //initialize communication channel
-    let conn = Connection::connect("amqp://127.0.0.1:5672//",ConnectionProperties::default()).await
+    let conn = Connection::connect(CONNECTION_ADDRESS,ConnectionProperties::default()).await
         .expect("Cannot connect to RabbitMQ");
     
     let channel = conn.create_channel().await
@@ -85,7 +97,10 @@ async fn main(){
 
 
     //initialize downlink
-    let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel.clone(),"telemetry_queue".to_string());
+    let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel.clone(),SATELLITE_DOWNLINK_QUEUE_NAME.to_string());
+    
+    //initialize receiver
+    let satellite_receiver = SatelliteReceiver::new(channel.clone(),GROUND_DOWNLINK_QUEUE_NAME.to_string());
     
     
     let mut background_tasks = Vec::new();
@@ -101,8 +116,9 @@ async fn main(){
     }
 
     let is_active_clone = is_active.clone();
+    let scheduler_command_clone = scheduler_command.clone();
     background_tasks.push(tokio::spawn(async move {
-        scheduler.execute_task(scheduler_command.clone(),telemetry_sensor_command.clone(),
+        scheduler.execute_task(scheduler_command_clone,telemetry_sensor_command.clone(),
                                radiation_sensor_command.clone(), antenna_sensor_command.clone(),is_active_clone,
                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
@@ -117,8 +133,11 @@ async fn main(){
 
     //Background task for downlink of window controller & process data & downlink data
     background_tasks.push(downlink.process_data());
-    background_tasks.push(downlink.downlink_data(5000));
+    background_tasks.push(downlink.downlink_data(DOWNLINK_INTERVAL));
 
+    background_tasks.push(satellite_receiver.receive_command());
+    background_tasks.push(satellite_receiver.process_command(scheduler_command.clone()));
+    
     //Background task for simulation of delayed sensor data fault injection
     background_tasks.push(telemetry_sensor.delay_fault_injection());
     background_tasks.push(radiation_sensor.delay_fault_injection());
