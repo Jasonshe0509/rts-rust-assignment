@@ -24,8 +24,8 @@ pub enum FaultSituation{
     CorruptedDataRecovered(SensorType),
     ReRequest(SensorType),
     LossOfContact(SensorType),
-    RespondReRequest(Option<SensorData>),
-    RespondLossOfContact(Option<SensorData>)
+    RespondReRequest(SensorType),
+    RespondLossOfContact(SensorType)
 }
 
 impl FaultMessageData {
