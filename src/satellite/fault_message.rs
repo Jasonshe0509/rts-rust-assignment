@@ -8,6 +8,7 @@ pub struct FaultMessageData {
     pub situation: FaultSituation,
     pub message: String,
     pub timestamp: DateTime<Utc>,
+    pub sensor_data: Option<SensorData>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -29,12 +30,13 @@ pub enum FaultSituation{
 }
 
 impl FaultMessageData {
-    pub fn new(fault_type: FaultType, situation: FaultSituation, message: String, timestamp: DateTime<Utc>) -> Self {
+    pub fn new(fault_type: FaultType, situation: FaultSituation, message: String, timestamp: DateTime<Utc>, sensor_data: Option<SensorData>) -> Self {
         FaultMessageData{
             fault_type,
             situation,
             message,
-            timestamp
+            timestamp,
+            sensor_data
         }
     }
 }
