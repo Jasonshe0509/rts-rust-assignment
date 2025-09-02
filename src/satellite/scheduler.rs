@@ -1,4 +1,4 @@
-use crate::satellite::buffer::PrioritizedBuffer;
+use crate::satellite::buffer::SensorPrioritizedBuffer;
 use crate::satellite::task::{Task, TaskName, TaskType};
 use crate::satellite::command::{SchedulerCommand, SensorCommand};
 use std::sync::Arc;
@@ -15,14 +15,14 @@ use tokio::task::JoinHandle;
 
 
 pub struct Scheduler{
-    sensor_buffer: Arc<PrioritizedBuffer>,
+    sensor_buffer: Arc<SensorPrioritizedBuffer>,
     downlink_buffer: Arc<FifoQueue<TransmissionData>>,
     task_queue: Arc<Mutex<BinaryHeap<Task>>>,
     tasks: Vec<TaskType>,
 }
 
 impl Scheduler {
-    pub fn new(s_buffer: Arc<PrioritizedBuffer>, d_buffer:  Arc<FifoQueue<TransmissionData>>,tasks_list: Vec<TaskType>) -> Self {
+    pub fn new(s_buffer: Arc<SensorPrioritizedBuffer>, d_buffer:  Arc<FifoQueue<TransmissionData>>, tasks_list: Vec<TaskType>) -> Self {
         Scheduler {
             sensor_buffer: s_buffer,
             downlink_buffer: d_buffer,
@@ -66,9 +66,9 @@ impl Scheduler {
                 self.task_queue.lock().await.push(new_task);
                 info!("Preempted {:?} Task for {:?}", task_name, sensor_type);
             }
-            SchedulerCommand::PAA(task_type) |
-            SchedulerCommand::PRM(task_type) |
-            SchedulerCommand::PHM(task_type) => {
+            SchedulerCommand::RAA(task_type, urgent) |
+            SchedulerCommand::RRM(task_type, urgent) |
+            SchedulerCommand::RHM(task_type, urgent) => {
                 let task_name = task_type.name.clone();
                 let process_time = task_type.process_time.clone().as_millis() as u64;
                 let new_task = Task {
@@ -76,7 +76,10 @@ impl Scheduler {
                     release_time: now,
                     deadline: now + Duration::from_millis(process_time),
                     data: None,
-                    priority: 3,
+                    priority: match urgent{
+                        true => 3,
+                        false => 5,
+                    },
                 };
                 self.task_queue.lock().await.push(new_task);
                 info!("Preempted Re-request {:?} Task", task_name);
@@ -134,7 +137,6 @@ impl Scheduler {
                               ant_inject_delay:Arc<AtomicBool>, ant_inject_corrupt: Arc<AtomicBool>) -> JoinHandle<()> {
         let task_queue = self.task_queue.clone();
         let downlink_buffer = self.downlink_buffer.clone();
-        let clock = Clock::new();
         
         
         loop {
@@ -151,38 +153,51 @@ impl Scheduler {
                 let mut data = None;
                 let mut fault = None;
                 match task.task.name {
-                    TaskName::HealthMonitoring  => {
+                    TaskName::HealthMonitoring(rerequest)  => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(telemetry_command.clone()),
                                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                 tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                 tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                     }
-                    TaskName::SpaceWeatherMonitoring => {
+                    TaskName::SpaceWeatherMonitoring(rerequest) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(radiation_command.clone()),
                                                     rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                     rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                     rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                     }
-                    TaskName::AntennaAlignment => {
+                    TaskName::AntennaAlignment(rerequest) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(antenna_command.clone()),
                                                     ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                     ant_delay_stat.clone(),ant_corrupt_stat.clone(),
-                                                    rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
+                                                    ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
                     }
                     TaskName::RecoverCorruptData |
                     TaskName::RecoverDelayedData => {
-                        match task.data.unwrap().sensor_type {
+                        let sensor_type = task.data.clone().unwrap().sensor_type;
+                        match sensor_type {
                             SensorType::OnboardTelemetrySensor => {
-                                
+                                (data,fault) = task.execute(self.sensor_buffer.clone(),
+                                                            execution_command.clone(), Some(telemetry_command.clone()),
+                                                            tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
+                                                            tel_delay_stat.clone(),tel_corrupt_stat.clone(),
+                                                            tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                             }
                             SensorType::RadiationSensor => {
-                                
+                                (data,fault) = task.execute(self.sensor_buffer.clone(),
+                                                            execution_command.clone(), Some(radiation_command.clone()),
+                                                            rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
+                                                            rad_delay_stat.clone(),rad_corrupt_stat.clone(),
+                                                            rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                             }
                             SensorType::AntennaPointingSensor => {
-                                
+                                (data,fault) = task.execute(self.sensor_buffer.clone(),
+                                                            execution_command.clone(), Some(antenna_command.clone()),
+                                                            ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
+                                                            ant_delay_stat.clone(),ant_corrupt_stat.clone(),
+                                                            ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
                             }
                         }
                     }

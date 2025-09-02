@@ -4,14 +4,14 @@ use tokio::sync::Mutex;
 use chrono::{DateTime, Utc};
 use log::{info, warn};
 
-pub struct PrioritizedBuffer {
+pub struct SensorPrioritizedBuffer {
     capacity: usize,
     heap: Mutex<MinMaxHeap<SensorData>>,
 }
 
-impl PrioritizedBuffer {
+impl SensorPrioritizedBuffer {
     pub fn new(set_capacity: usize) -> Self {
-        PrioritizedBuffer {
+        SensorPrioritizedBuffer {
             capacity: set_capacity,
             heap: Mutex::new(MinMaxHeap::with_capacity(set_capacity)),
         }
@@ -19,7 +19,6 @@ impl PrioritizedBuffer {
 
     pub async fn push(&self, data: SensorData) -> Result<(), String> {
         let mut heap = self.heap.lock().await;
-        //info!("Buffer len: {}", heap.len());
         if heap.len() >= self.capacity {
             // Buffer full, drop lowest-priority data if new data has higher priority
             if let Some(highest) = heap.peek_min(){
@@ -35,15 +34,11 @@ impl PrioritizedBuffer {
                 }
             }
         }
-        let data_timestamp = data.timestamp.clone();
-        let data_sensor = data.sensor_type.clone();
+
         heap.push(data);
-        drop(heap);
+        //drop(heap);
         
-        //Latency
-        let buffer_timestamp = Utc::now();
-        let latency = buffer_timestamp.signed_duration_since(data_timestamp).num_microseconds().unwrap() as f64 / 1000.0;
-        info!("Buffer insertion latency for {:?}: {}ms", data_sensor, latency);
+    
         Ok(())
     }
 

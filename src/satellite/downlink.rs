@@ -194,7 +194,6 @@ impl Downlink {
                         warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
 
                     }
-                    //tokio::time::sleep(Duration::from_millis(5000)).await;
                 }
             }
         });

@@ -6,11 +6,9 @@ use crate::satellite::task::{TaskName, TaskType};
 
 pub enum SchedulerCommand {
     TC(TaskType), //Thermal Control Task (internal)
-    // SM(TaskType),//Safe Mode Activation Task (internal)
-    // SO(TaskType), //Signal Optimization Task (internal)
-    PHM(TaskType), //Preempt Health Monitoring Task (internal)
-    PRM(TaskType), //Preempt Space Weather Monitoring Task (internal)
-    PAA(TaskType), //Preempt Antenna Alignment Task (internal)
+    RHM(TaskType, bool), //Preempt Health Monitoring Task (internal)
+    RRM(TaskType, bool), //Preempt Space Weather Monitoring Task (internal)
+    RAA(TaskType, bool), //Preempt Antenna Alignment Task (internal)
     DDR(TaskType, SensorData), //Delayed Data Recovery
     CDR(TaskType, SensorData), //Corrupted Data Recovery
 }

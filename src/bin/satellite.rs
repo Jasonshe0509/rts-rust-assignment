@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use lapin::{Connection, ConnectionProperties};
 use tokio::sync::Mutex;
-use rts_rust_assignment::satellite::buffer::PrioritizedBuffer;
+use rts_rust_assignment::satellite::buffer::SensorPrioritizedBuffer;
 use rts_rust_assignment::satellite::sensor::{Sensor, SensorType};
 use tokio::time::Duration;
 use rts_rust_assignment::satellite::task::{TaskName, TaskType};
@@ -11,8 +11,6 @@ use rts_rust_assignment::satellite::FIFO_queue::FifoQueue;
 use rts_rust_assignment::satellite::downlink::Downlink;
 use log::{info,warn};
 use rts_rust_assignment::util::log_generator::LogGenerator;
-
-// MODIFIED: Added for CPU utilization measurement
 use std::sync::atomic::{AtomicBool, Ordering};
 use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 
@@ -23,7 +21,7 @@ async fn main(){
 
     //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
-    let sensor_buffer = Arc::new(PrioritizedBuffer::new(300));
+    let sensor_buffer = Arc::new(SensorPrioritizedBuffer::new(300));
 
     let tel_delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
     let tel_corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
@@ -57,9 +55,9 @@ async fn main(){
                                          ant_delay_status.clone(),ant_corrupt_status.clone(),ant_inject_delay.clone(),ant_inject_corrupt.clone());
 
     //initialize tasks to be scheduled
-    let health_monitoring = TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(100));
-    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring, Some(2000), Duration::from_millis(150));
-    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment, Some(3000), Duration::from_millis(200));
+    let health_monitoring = TaskType::new(TaskName::HealthMonitoring(false), Some(1000), Duration::from_millis(100));
+    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring(false), Some(2000), Duration::from_millis(150));
+    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment(false), Some(3000), Duration::from_millis(200));
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
 
     
@@ -164,9 +162,12 @@ async fn main(){
     drop(conn);
     drop(channel);
     
+    info!("System is terminating tasks...");
     //stop all tasks
     for background_task in background_tasks {
         background_task.abort();
     }
+    //simulate terminate time
+    tokio::time::sleep(Duration::from_secs(2)).await;
     info!("All tasks stopped");
 }
