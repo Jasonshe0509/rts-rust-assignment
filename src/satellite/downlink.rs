@@ -146,6 +146,7 @@ impl Downlink {
             let mut antenna_data_counter = 0;
             let mut fault_data_counter = 0;
             let clock = Clock::new();
+            let mut degradation_mode = false;
             loop {
                 if let Some(data) = downlink_buffer.pop().await {
                     let before_queue = clock.now();
@@ -181,18 +182,23 @@ impl Downlink {
 
                     let compress_packet = bincode::serialize(&packet).unwrap();
 
+                    //simulate degradation mode by slowing down encoding data task
+                    if degradation_mode {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                    
                     transmission_queue.push(compress_packet).await;
 
                     //transmission queue latency**********************
                     let latency = clock.now().duration_since(before_queue).as_millis() as f64;
                     info!("Packet insert to transmission queue latency: {}ms",latency);
 
-                    //buffer fill rate
+                    //buffer fill rate*********
                     let buffer_len = downlink_buffer.len().await;
                     let buffer_capacity = downlink_buffer.capacity;
-                    let fill_rate = (buffer_len as f64 / buffer_capacity as f64) * 100.0;
-                    info!("Downlink buffer fill rate: {:2}%",fill_rate);
-                    if fill_rate > 80.0 {
+                    let buffer_fill_rate = (buffer_len as f64 / buffer_capacity as f64) * 100.0;
+                    info!("Downlink buffer fill rate: {:2}%",buffer_fill_rate);
+                    if buffer_fill_rate > 80.0 {
                         warn!("Degraded mode triggered: Downlink buffer rate exceeded 80%");
 
                     }
@@ -200,8 +206,12 @@ impl Downlink {
                     //transmission queue fill rate
                     let queue_len = transmission_queue.len().await;
                     let queue_capacity = transmission_queue.capacity;
-                    let fill_rate = (queue_len as f64 / queue_capacity as f64) * 100.0;
-                    info!("Transmission queue fill rate: {:2}%",fill_rate);
+                    let queue_fill_rate = (queue_len as f64 / queue_capacity as f64) * 100.0;
+                    info!("Transmission queue fill rate: {:2}%",queue_fill_rate);
+                    if queue_fill_rate > 80.0 {
+                        warn!("Degraded mode triggered: Transmission queue rate exceeded 80%");
+                        degradation_mode = true;
+                    }
                 }
             }
         });
