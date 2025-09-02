@@ -33,48 +33,48 @@ impl LogGenerator {
             .open(&log_file_path)
             .expect("Failed to open log file");
 
+        // File logging
+        let file_layer = fmt::layer()
+            .with_writer(file_appender)
+            .with_target(false)
+            .with_line_number(true)
+            .with_filter(TracingLevelFilter::INFO);
+        
+        // Terminal logging
+        let stdout_layer = fmt::layer()
+            .with_writer(std::io::stdout) // logs to terminal
+            .with_target(false)
+            .with_line_number(true)
+            .with_filter(TracingLevelFilter::INFO);
+
         // // File logging
         // let file_layer = fmt::layer()
+        //     .event_format(
+        //         Format::default()
+        //             .with_level(true)         // show INFO / DEBUG
+        //             .with_target(true)        // show target (like module path)
+        //             .with_thread_ids(false)
+        //             .with_line_number(false)
+        //             .with_timer(UtcTime::rfc_3339()), // [2025-08-30T10:41:56Z ...]
+        //     )
         //     .with_writer(file_appender)
-        //     .with_target(false)
-        //     .with_line_number(true)
         //     .with_filter(TracingLevelFilter::INFO);
         // 
         // // Terminal logging
         // let stdout_layer = fmt::layer()
-        //     .with_writer(std::io::stdout) // logs to terminal
-        //     .with_target(false)
-        //     .with_line_number(true)
+        //     .event_format(
+        //         Format::default()
+        //             .with_level(true)
+        //             .with_target(true)
+        //             .with_thread_ids(false)
+        //             .with_line_number(false)
+        //             .with_timer(UtcTime::rfc_3339()),
+        //     )
+        //     .with_writer(std::io::stdout)
         //     .with_filter(TracingLevelFilter::INFO);
-
-        // File logging
-        let file_layer = fmt::layer()
-            .event_format(
-                Format::default()
-                    .with_level(true)         // show INFO / DEBUG
-                    .with_target(true)        // show target (like module path)
-                    .with_thread_ids(false)
-                    .with_line_number(false)
-                    .with_timer(UtcTime::rfc_3339()), // [2025-08-30T10:41:56Z ...]
-            )
-            .with_writer(file_appender)
-            .with_filter(TracingLevelFilter::INFO);
-
-        // Terminal logging
-        let stdout_layer = fmt::layer()
-            .event_format(
-                Format::default()
-                    .with_level(true)
-                    .with_target(true)
-                    .with_thread_ids(false)
-                    .with_line_number(false)
-                    .with_timer(UtcTime::rfc_3339()),
-            )
-            .with_writer(std::io::stdout)
-            .with_filter(TracingLevelFilter::INFO);
-
-        //Additional bridge log crate to tracing
-        //LogTracer::init().expect("Failed to initialize log tracer");
+        // 
+        // //Additional bridge log crate to tracing
+        // //LogTracer::init().expect("Failed to initialize log tracer");
 
         // Register subscriber
         Registry::default()

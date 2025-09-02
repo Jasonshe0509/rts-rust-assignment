@@ -35,30 +35,46 @@ impl Scheduler {
         let clock = Clock::new();
         let now = clock.now();
         match command {
-            SchedulerCommand::TC(task_type) |
-            SchedulerCommand::SM(task_type) |
-            SchedulerCommand::SO(task_type) => {
+            SchedulerCommand::TC(task_type) => {
+            // SchedulerCommand::TC(task_type) |
+            // SchedulerCommand::SM(task_type) |
+            // SchedulerCommand::SO(task_type) => {
                 let task_name = task_type.name.clone();
+                let process_time = task_type.process_time.clone().as_millis() as u64;
                 let new_task = Task {
                     task: task_type,
-                    schedule_time: now,
-                    start_time: None,
-                    deadline: None,
+                    release_time: now,
+                    deadline: now + Duration::from_millis(process_time),
                     data: None,
                     priority: 5,
                 };
                 self.task_queue.lock().await.push(new_task);
                 info!("Preempted {:?} Task", task_name);
             }
+            SchedulerCommand::CDR(task_type, sensor_data) |
+            SchedulerCommand::DDR(task_type, sensor_data) => {
+                let task_name = task_type.name.clone();
+                let process_time = task_type.process_time.clone().as_millis() as u64;
+                let sensor_type = sensor_data.sensor_type.clone();
+                let new_task = Task {
+                    task: task_type,
+                    release_time: now,
+                    deadline: now + Duration::from_millis(process_time),
+                    data: Some(sensor_data),
+                    priority: 5,
+                };
+                self.task_queue.lock().await.push(new_task);
+                info!("Preempted {:?} Task for {:?}", task_name, sensor_type);
+            }
             SchedulerCommand::PAA(task_type) |
             SchedulerCommand::PRM(task_type) |
             SchedulerCommand::PHM(task_type) => {
                 let task_name = task_type.name.clone();
+                let process_time = task_type.process_time.clone().as_millis() as u64;
                 let new_task = Task {
                     task: task_type,
-                    schedule_time: now,
-                    start_time: None,
-                    deadline: None,
+                    release_time: now,
+                    deadline: now + Duration::from_millis(process_time),
                     data: None,
                     priority: 3,
                 };
@@ -88,9 +104,8 @@ impl Scheduler {
                     expected_tick += Duration::from_millis(task_type.interval_ms.unwrap());
                     let new_task = Task {
                         task: task_type.clone(),
-                        schedule_time: actual,
-                        start_time: None,
-                        deadline: None,
+                        release_time: actual,
+                        deadline: actual + Duration::from_millis(task_type.process_time.as_millis() as u64),
                         data: None,
                         priority: 1
                     };
@@ -113,7 +128,10 @@ impl Scheduler {
                               ant_corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
                               tel_delay_stat:Arc<AtomicBool>, tel_corrupt_stat: Arc<AtomicBool>,
                               rad_delay_stat:Arc<AtomicBool>, rad_corrupt_stat: Arc<AtomicBool>,
-                              ant_delay_stat:Arc<AtomicBool>, ant_corrupt_stat: Arc<AtomicBool>) -> JoinHandle<()> {
+                              ant_delay_stat:Arc<AtomicBool>, ant_corrupt_stat: Arc<AtomicBool>,
+                              tel_inject_delay:Arc<AtomicBool>, tel_inject_corrupt: Arc<AtomicBool>,
+                              rad_inject_delay:Arc<AtomicBool>, rad_inject_corrupt: Arc<AtomicBool>,
+                              ant_inject_delay:Arc<AtomicBool>, ant_inject_corrupt: Arc<AtomicBool>) -> JoinHandle<()> {
         let task_queue = self.task_queue.clone();
         let downlink_buffer = self.downlink_buffer.clone();
         let clock = Clock::new();
@@ -130,34 +148,50 @@ impl Scheduler {
             }
             if let Some(mut task) = task_queue.lock().await.pop() {
                 is_active.store(true, std::sync::atomic::Ordering::SeqCst);
-                let start = clock.now();
-                task.start_time = Some(start);
-                task.deadline = Some(start + task.task.process_time);
                 let mut data = None;
                 let mut fault = None;
                 match task.task.name {
-                    TaskName::HealthMonitoring => {
+                    TaskName::HealthMonitoring  => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(telemetry_command.clone()),
                                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
-                                                    tel_delay_stat.clone(),tel_corrupt_stat.clone()).await;
+                                                tel_delay_stat.clone(),tel_corrupt_stat.clone(),
+                                                tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                     }
                     TaskName::SpaceWeatherMonitoring => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(radiation_command.clone()),
                                                     rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
-                                                    rad_delay_stat.clone(),rad_corrupt_stat.clone()).await;
+                                                    rad_delay_stat.clone(),rad_corrupt_stat.clone(),
+                                                    rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                     }
                     TaskName::AntennaAlignment => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), Some(antenna_command.clone()),
                                                     ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
-                                                    ant_delay_stat.clone(),ant_corrupt_stat.clone()).await;
+                                                    ant_delay_stat.clone(),ant_corrupt_stat.clone(),
+                                                    rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
+                    }
+                    TaskName::RecoverCorruptData |
+                    TaskName::RecoverDelayedData => {
+                        match task.data.unwrap().sensor_type {
+                            SensorType::OnboardTelemetrySensor => {
+                                
+                            }
+                            SensorType::RadiationSensor => {
+                                
+                            }
+                            SensorType::AntennaPointingSensor => {
+                                
+                            }
+                        }
                     }
                     _ => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                 execution_command.clone(), None,
-                                                    Arc::new(Mutex::new(None)),Arc::new(Mutex::new(None)),tel_delay_stat.clone(),tel_corrupt_stat.clone()).await;
+                                                    Arc::new(Mutex::new(None)),Arc::new(Mutex::new(None)),
+                                                    tel_delay_stat.clone(),tel_corrupt_stat.clone(),
+                                                    tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                     }
                 }
                 if let Some(sensor_data) = data{

@@ -37,22 +37,29 @@ async fn main(){
     let rad_corrupt_status = Arc::new(AtomicBool::new(false));
     let ant_delay_status = Arc::new(AtomicBool::new(false));
     let ant_corrupt_status = Arc::new(AtomicBool::new(false));
+    let tel_inject_delay = Arc::new(AtomicBool::new(false));
+    let tel_inject_corrupt = Arc::new(AtomicBool::new(false));
+    let rad_inject_delay = Arc::new(AtomicBool::new(false));
+    let rad_inject_corrupt = Arc::new(AtomicBool::new(false));
+    let ant_inject_delay = Arc::new(AtomicBool::new(false));
+    let ant_inject_corrupt = Arc::new(AtomicBool::new(false));
+
 
     //initialize sensor
     let mut telemetry_sensor = Sensor::new(SensorType::OnboardTelemetrySensor,
                                            50,tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
-                                            tel_delay_status.clone(),tel_corrupt_status.clone());
+                                            tel_delay_status.clone(),tel_corrupt_status.clone(),tel_inject_delay.clone(),tel_inject_corrupt.clone());
     let mut radiation_sensor = Sensor::new(SensorType::RadiationSensor,
                                            100,rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
-                                           rad_delay_status.clone(),rad_corrupt_status.clone());
+                                           rad_delay_status.clone(),rad_corrupt_status.clone(),rad_inject_delay.clone(),rad_inject_corrupt.clone());
     let mut antenna_sensor = Sensor::new(SensorType::AntennaPointingSensor,
                                          150,ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
-                                         ant_delay_status.clone(),ant_corrupt_status.clone());
+                                         ant_delay_status.clone(),ant_corrupt_status.clone(),ant_inject_delay.clone(),ant_inject_corrupt.clone());
 
     //initialize tasks to be scheduled
-    let health_monitoring = TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(500));
-    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring, Some(1500), Duration::from_millis(600));
-    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment, Some(2000), Duration::from_millis(1000));
+    let health_monitoring = TaskType::new(TaskName::HealthMonitoring, Some(1000), Duration::from_millis(100));
+    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring, Some(2000), Duration::from_millis(150));
+    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment, Some(3000), Duration::from_millis(200));
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
 
     
@@ -104,7 +111,10 @@ async fn main(){
                                ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                tel_delay_status.clone(),tel_corrupt_status.clone(),
                                rad_delay_status.clone(),rad_corrupt_status.clone(),
-                               ant_delay_status.clone(),ant_corrupt_status.clone()).await;
+                               ant_delay_status.clone(),ant_corrupt_status.clone(),
+                               tel_inject_delay.clone(),tel_inject_corrupt.clone(),
+                               rad_inject_delay.clone(),rad_inject_corrupt.clone(),
+                               ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
     }));
 
     //Background task for downlink of window controller & process data & downlink data
