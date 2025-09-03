@@ -16,7 +16,7 @@ pub enum FaultType{
     Response
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum FaultSituation{
     DelayedData(SensorType),
     CorruptedData(SensorType),

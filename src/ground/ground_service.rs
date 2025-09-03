@@ -103,7 +103,7 @@ impl GroundService {
                     &mut state,
                 );
             }
-            FaultSituation::ResponseLossOfContact(sensor) => {
+            FaultSituation::RespondLossOfContact(sensor) => {
                 Self::handle_recovery(
                     fault_event,
                     &sensor,
