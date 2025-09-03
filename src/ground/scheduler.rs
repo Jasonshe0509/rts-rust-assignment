@@ -3,9 +3,10 @@ use crate::ground::sender::Sender;
 use crate::ground::system_state::SystemState;
 use crate::ground::uplink::{DataDetails, PacketizeData};
 use crate::util::compressor::Compressor;
+use chrono::{Duration as ChronoDuration, Utc};
 use std::collections::BinaryHeap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::Duration as StdDuration;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::{Instant, sleep_until};
 use tracing::{error, info, warn};
@@ -22,9 +23,24 @@ impl Scheduler {
         let mut heap = BinaryHeap::new();
 
         // default commands
-        heap.push(Command::new(CommandType::PG, 1, 25));
-        heap.push(Command::new(CommandType::SC, 1, 38));
-        heap.push(Command::new(CommandType::EC, 1, 15));
+        heap.push(Command::new(
+            CommandType::PG,
+            1,
+            ChronoDuration::seconds(15),
+            ChronoDuration::seconds(2),
+        ));
+        heap.push(Command::new(
+            CommandType::SC,
+            1,
+            ChronoDuration::seconds(25),
+            ChronoDuration::seconds(2),
+        ));
+        heap.push(Command::new(
+            CommandType::EC,
+            1,
+            ChronoDuration::seconds(10),
+            ChronoDuration::seconds(2),
+        ));
         Self {
             heap,
             sender,
@@ -35,13 +51,16 @@ impl Scheduler {
 
     pub async fn run(&mut self) {
         loop {
-            let now = Command::now_millis();
+            let now = Utc::now();
             if let Some(command) = self.heap.peek() {
-                if command.next_run_millis <= now {
+                if command.release_time <= now {
                     let mut command = self.heap.pop().unwrap();
 
                     // urgent commands (≤2ms dispatch)
-                    let dispatch_latency = now - command.next_run_millis;
+                    let dispatch_latency = now
+                        .signed_duration_since(command.release_time)
+                        .num_milliseconds();
+
                     if dispatch_latency > 2 && command.priority >= 5 {
                         warn!(
                             "Urgent command {:?} exceeded 2ms dispatch: {}ms",
@@ -103,6 +122,25 @@ impl Scheduler {
                         }
                         _ => {}
                     }
+                    let complete_time = Utc::now();
+                    if complete_time > command.absolute_deadline {
+                        let miss = complete_time
+                            .signed_duration_since(command.absolute_deadline)
+                            .num_milliseconds();
+                        warn!(
+                            "⚠️ Command {:?} exceeded its deadline by {} ms",
+                            command.command_type, miss
+                        );
+                    } else {
+                        let early = command
+                            .absolute_deadline
+                            .signed_duration_since(complete_time)
+                            .num_milliseconds();
+                        info!(
+                            "✅ Command {:?} completed {} ms before its deadline",
+                            command.command_type, early
+                        );
+                    }
 
                     if !command.one_shot {
                         command.reschedule();
@@ -111,16 +149,16 @@ impl Scheduler {
 
                     continue;
                 } else {
-                    let wait_ms = command.next_run_millis - now;
-                    let sleep_until_instant = Instant::now() + Duration::from_millis(wait_ms);
+                    let target_instant =
+                        Instant::now() + (command.release_time - now).to_std().unwrap_or_default();
 
                     tokio::select! {
-                        _ = sleep_until(sleep_until_instant) => {},
+                        _ = sleep_until(target_instant) => {},
                         _ = self.notify.notified() => {},
                     }
                 }
             } else {
-                let sleep_until_instant = Instant::now() + Duration::from_millis(10);
+                let sleep_until_instant = Instant::now() + StdDuration::from_millis(10);
                 tokio::select! {
                 _ = sleep_until(sleep_until_instant) => {},
                 _ = self.notify.notified() => {},

@@ -46,6 +46,7 @@ impl Receiver {
     }
 
     pub async fn run(&mut self) {
+        info!(queue = %self.queue_name, "📡 Receiver starting...");
         // declare queue
         self.channel
             .queue_declare(
@@ -55,6 +56,7 @@ impl Receiver {
             )
             .await
             .expect("Queue declare failed");
+        info!(queue = %self.queue_name, "✅ Queue declared");
 
         // create consumer
         let mut consumer = self
@@ -67,6 +69,7 @@ impl Receiver {
             )
             .await
             .expect("Failed to start consumer");
+        info!(queue = %self.queue_name, "👂 Consumer started");
 
         // consume loop
         while let Some(delivery) = consumer.next().await {
@@ -81,7 +84,7 @@ impl Receiver {
                             latency.as_millis()
                         );
                     } else {
-                        warn!("Failed to calculate latency: message timestamp is in the future");
+                        warn!("⚠️ Message timestamp is in the future, cannot calculate latency");
                     }
                 }
 
@@ -127,6 +130,7 @@ impl Receiver {
                             &sensor.unwrap().sensor_type,
                             &self.scheduler,
                             &self.system_state,
+                            &mut self.fault_event
                         )
                         .await;
                 } else if (fault.is_some()) {

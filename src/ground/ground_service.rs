@@ -2,17 +2,34 @@ use crate::ground::command::{Command, CommandType};
 use crate::ground::fault_event::{FaultEvent, FaultResolveData};
 use crate::ground::scheduler::Scheduler;
 use crate::ground::system_state::SystemState;
-use crate::satellite::fault_message::{FaultMessageData, FaultSituation};
+use crate::satellite::fault_message::{FaultMessageData, FaultSituation, FaultType};
 use crate::satellite::sensor::SensorType;
+use chrono::{Duration, Utc};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 pub struct GroundService {}
 
 impl GroundService {
-    pub async fn trigger_rerequest(sensor_type: &SensorType, scheduler: &Arc<Mutex<Scheduler>>) {
-        let command = Command::new_one_shot(CommandType::RR(sensor_type.clone()), 3, 5);
+    pub async fn trigger_rerequest(
+        sensor_type: &SensorType,
+        scheduler: &Arc<Mutex<Scheduler>>,
+        fault_event: &mut FaultEvent,
+    ) {
+        let fault_message_data = FaultMessageData {
+            fault_type: FaultType::Fault,
+            situation: FaultSituation::ReRequest(sensor_type.clone()),
+            timestamp: Utc::now(),
+            message: format!("Fault: Re-request for {:?} has been detected", sensor_type),
+        };
+        fault_event.add_fault(&fault_message_data);
+        let command = Command::new_one_shot(
+            CommandType::RR(sensor_type.clone()),
+            3,
+            Duration::seconds(5),
+            Duration::seconds(2),
+        );
 
         let mut sched = scheduler.lock().await;
         sched.add_one_shot_command(command);
@@ -21,8 +38,24 @@ impl GroundService {
     pub async fn trigger_loss_of_contact(
         sensor_type: &SensorType,
         scheduler: &Arc<Mutex<Scheduler>>,
+        fault_event: &mut FaultEvent,
     ) {
-        let command = Command::new_one_shot(CommandType::LC(sensor_type.clone()), 5, 0);
+        let fault_message_data = FaultMessageData {
+            fault_type: FaultType::Fault,
+            situation: FaultSituation::LossOfContact(sensor_type.clone()),
+            timestamp: Utc::now(),
+            message: format!(
+                "Fault: Loss of contact for {:?} has been detected",
+                sensor_type
+            ),
+        };
+        fault_event.add_fault(&fault_message_data);
+        let command = Command::new_one_shot(
+            CommandType::LC(sensor_type.clone()),
+            5,
+            Duration::seconds(0),
+            Duration::seconds(2),
+        );
 
         let mut sched = scheduler.lock().await;
         sched.add_one_shot_command(command);
@@ -59,6 +92,30 @@ impl GroundService {
                     FaultSituation::DelayedData(sensor.clone()),
                     &fault_message_data,
                     &mut state,
+                );
+            }
+            FaultSituation::RespondReRequest(sensor) => {
+                Self::handle_recovery(
+                    fault_event,
+                    &sensor,
+                    FaultSituation::ReRequest(sensor.clone()),
+                    &fault_message_data,
+                    &mut state,
+                );
+            }
+            FaultSituation::ResponseLossOfContact(sensor) => {
+                Self::handle_recovery(
+                    fault_event,
+                    &sensor,
+                    FaultSituation::ReRequest(sensor.clone()),
+                    &fault_message_data,
+                    &mut state,
+                );
+            }
+            _ => {
+                error!(
+                    "Unknown fault situation has been detected: {:?}",
+                    fault_message_data.situation
                 );
             }
         }

@@ -1,52 +1,65 @@
+use crate::ground::system_state::SystemState;
+use crate::satellite::sensor::SensorType;
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use crate::ground::system_state::SystemState;
-use crate::satellite::sensor::SensorType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CommandType{
-    PG,//Ping
-    SC, //StatusCheck
-    EC, //Echo
+pub enum CommandType {
+    PG,             //Ping
+    SC,             //StatusCheck
+    EC,             //Echo
     RR(SensorType), //Re-Request
-    LC(SensorType) //Loss of Contact
+    LC(SensorType), //Loss of Contact
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Command{
+pub struct Command {
     pub command_type: CommandType,
     pub priority: u8,
-    pub interval_secs: u64,
-    pub next_run_millis: u64,
+    pub interval_secs: Duration, //period in second
+    pub release_time: DateTime<Utc>,
+    pub relative_deadline: Duration, // in seconds
+    pub absolute_deadline: DateTime<Utc>,
     pub one_shot: bool,
 }
 
 impl Command {
-    pub fn now_millis() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
-    }
-    pub fn new(command_type: CommandType, priority: u8, interval_secs: u64) -> Self {
-        let now = Self::now_millis();
-        Self{
+    pub fn new(
+        command_type: CommandType,
+        priority: u8,
+        interval_secs: Duration,
+        relative_deadline_secs: Duration,
+    ) -> Self {
+        let now = Utc::now();
+        let release_time = now + interval_secs;
+        Self {
             command_type,
             priority,
             interval_secs,
-            next_run_millis: now + interval_secs * 1000,
+            release_time,
+            relative_deadline: relative_deadline_secs,
+            absolute_deadline: release_time + relative_deadline_secs,
             one_shot: false,
         }
     }
-    pub fn new_one_shot(command_type: CommandType, priority: u8, interval_secs: u64) -> Self {
-        let now = Self::now_millis();
-        Self{
+    pub fn new_one_shot(
+        command_type: CommandType,
+        priority: u8,
+        interval_secs: Duration,
+        relative_deadline_secs: Duration,
+    ) -> Self {
+        let now = Utc::now();
+        let release_time = now + interval_secs;
+        Self {
             command_type,
             priority,
             interval_secs,
-            next_run_millis: now + interval_secs * 1000,
+            release_time,
+            relative_deadline: relative_deadline_secs,
+            absolute_deadline: release_time + relative_deadline_secs,
             one_shot: true,
         }
     }
@@ -61,7 +74,10 @@ impl Command {
                 if state.is_sensor_active(sensor) {
                     Ok(())
                 } else {
-                    Err(format!("sensor {:?} in the system state is not active", sensor))
+                    Err(format!(
+                        "sensor {:?} in the system state is not active",
+                        sensor
+                    ))
                 }
             }
 
@@ -70,15 +86,19 @@ impl Command {
                 if state.has_consecutive_failures(sensor) {
                     Ok(())
                 } else {
-                    Err(format!("sensor {:?} in the system state have insufficient failure (<3)", sensor))
+                    Err(format!(
+                        "sensor {:?} in the system state have insufficient failure (<3)",
+                        sensor
+                    ))
                 }
             }
         }
     }
     pub fn reschedule(&mut self) {
         if !self.one_shot {
-            let now = Self::now_millis();
-            self.next_run_millis = now + self.interval_secs * 1000;
+            let now = Utc::now();
+            self.release_time = now + self.interval_secs;
+            self.absolute_deadline = self.release_time + self.relative_deadline;
         }
     }
 }
@@ -86,7 +106,7 @@ impl Command {
 /// Implement ordering so BinaryHeap works as a priority queue
 impl PartialEq for Command {
     fn eq(&self, other: &Self) -> bool {
-        self.priority == other.priority && self.next_run_millis == other.next_run_millis
+        self.priority == other.priority && self.release_time == other.release_time
     }
 }
 impl Eq for Command {}
@@ -103,7 +123,7 @@ impl Ord for Command {
         match self.priority.cmp(&other.priority) {
             Ordering::Equal => {
                 // Earlier run first (smaller millis = earlier)
-                other.next_run_millis.cmp(&self.next_run_millis)
+                other.release_time.cmp(&self.release_time)
             }
             other => other,
         }

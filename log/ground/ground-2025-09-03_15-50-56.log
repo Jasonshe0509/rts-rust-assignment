@@ -1,0 +1,51 @@
+[2m2025-09-03T07:50:56.308122Z[0m [32m INFO[0m [2m16:[0m 🚀 Ground system starting...
+[2m2025-09-03T07:50:56.398011Z[0m [32m INFO[0m [2m22:[0m ✅ Connected to RabbitMQ
+[2m2025-09-03T07:50:56.432289Z[0m [32m INFO[0m [2m28:[0m ✅ Channel created successfully
+[2m2025-09-03T07:50:56.432545Z[0m [32m INFO[0m [2m31:[0m 📤 Sender bound to 'command_queue'
+[2m2025-09-03T07:50:56.432846Z[0m [32m INFO[0m [2m49:[0m 📥 Receiver bound to 'telemetry_queue'
+[2m2025-09-03T07:50:56.433022Z[0m [32m INFO[0m [2m51:[0m ⚡ Running scheduler + receiver
+[2m2025-09-03T07:50:56.433423Z[0m [32m INFO[0m [2m49:[0m 📡 Receiver starting... [3mqueue[0m[2m=[0mtelemetry_queue
+[2m2025-09-03T07:50:56.434299Z[0m [32m INFO[0m [2m59:[0m ✅ Queue declared [3mqueue[0m[2m=[0mtelemetry_queue
+[2m2025-09-03T07:50:56.434795Z[0m [32m INFO[0m [2m72:[0m 👂 Consumer started [3mqueue[0m[2m=[0mtelemetry_queue
+[2m2025-09-03T07:51:06.437143Z[0m [32m INFO[0m [2m78:[0m Scheduling drift: difference between scheduled and actual task start times for command EC: 4ms
+[2m2025-09-03T07:51:06.437612Z[0m [32m INFO[0m [2m94:[0m Command EC validated successfully (latency: 14 µs)
+[2m2025-09-03T07:51:06.437836Z[0m [32m INFO[0m [2m100:[0m Command validated: EC
+[2m2025-09-03T07:51:06.438047Z[0m [32m INFO[0m [2m102:[0m About to send command: EC
+[2m2025-09-03T07:51:06.439549Z[0m [32m INFO[0m [2m32:[0m Command sent: [3, 0, 0, 0, 0, 0, 0, 0, 67, 77, 49, 0, 0, 0, 0, 0, 0, 73, 64, 50, 0, 0, 0, 0, 0, 0, 0, 120, 156, 1, 39, 0, 216, 255, 123, 34, 99, 111, 109, 109, 97, 110, 100, 95, 116, 121, 112, 101, 34, 58, 34, 69, 67, 34, 44, 34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 34, 72, 101, 108, 108, 111, 34, 125, 12, 19, 13, 10]
+[2m2025-09-03T07:51:06.439827Z[0m [32m INFO[0m [2m139:[0m ✅ Command EC completed 1993 ms before its deadline
+[2m2025-09-03T07:51:11.436747Z[0m [32m INFO[0m [2m78:[0m Scheduling drift: difference between scheduled and actual task start times for command PG: 3ms
+[2m2025-09-03T07:51:11.437125Z[0m [32m INFO[0m [2m94:[0m Command PG validated successfully (latency: 1 µs)
+[2m2025-09-03T07:51:11.437367Z[0m [32m INFO[0m [2m100:[0m Command validated: PG
+[2m2025-09-03T07:51:11.437595Z[0m [32m INFO[0m [2m102:[0m About to send command: PG
+[2m2025-09-03T07:51:11.438705Z[0m [32m INFO[0m [2m32:[0m Command sent: [3, 0, 0, 0, 0, 0, 0, 0, 67, 77, 50, 0, 0, 0, 0, 0, 128, 71, 64, 47, 0, 0, 0, 0, 0, 0, 0, 120, 156, 1, 36, 0, 219, 255, 123, 34, 99, 111, 109, 109, 97, 110, 100, 95, 116, 121, 112, 101, 34, 58, 34, 80, 71, 34, 44, 34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 110, 117, 108, 108, 125, 233, 113, 12, 156]
+[2m2025-09-03T07:51:11.438893Z[0m [32m INFO[0m [2m139:[0m ✅ Command PG completed 1993 ms before its deadline
+[2m2025-09-03T07:51:16.446419Z[0m [32m INFO[0m [2m78:[0m Scheduling drift: difference between scheduled and actual task start times for command EC: 6ms
+[2m2025-09-03T07:51:16.446932Z[0m [32m INFO[0m [2m94:[0m Command EC validated successfully (latency: 1 µs)
+[2m2025-09-03T07:51:16.447156Z[0m [32m INFO[0m [2m100:[0m Command validated: EC
+[2m2025-09-03T07:51:16.447342Z[0m [32m INFO[0m [2m102:[0m About to send command: EC
+[2m2025-09-03T07:51:16.448403Z[0m [32m INFO[0m [2m32:[0m Command sent: [3, 0, 0, 0, 0, 0, 0, 0, 67, 77, 51, 0, 0, 0, 0, 0, 0, 73, 64, 50, 0, 0, 0, 0, 0, 0, 0, 120, 156, 1, 39, 0, 216, 255, 123, 34, 99, 111, 109, 109, 97, 110, 100, 95, 116, 121, 112, 101, 34, 58, 34, 69, 67, 34, 44, 34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 34, 72, 101, 108, 108, 111, 34, 125, 12, 19, 13, 10]
+[2m2025-09-03T07:51:16.448591Z[0m [32m INFO[0m [2m139:[0m ✅ Command EC completed 1991 ms before its deadline
+[2m2025-09-03T07:51:21.445537Z[0m [32m INFO[0m [2m78:[0m Scheduling drift: difference between scheduled and actual task start times for command SC: 12ms
+[2m2025-09-03T07:51:21.446055Z[0m [32m INFO[0m [2m94:[0m Command SC validated successfully (latency: 1 µs)
+[2m2025-09-03T07:51:21.446308Z[0m [32m INFO[0m [2m100:[0m Command validated: SC
+[2m2025-09-03T07:51:21.446558Z[0m [32m INFO[0m [2m102:[0m About to send command: SC
+[2m2025-09-03T07:51:21.447595Z[0m [32m INFO[0m [2m32:[0m Command sent: [3, 0, 0, 0, 0, 0, 0, 0, 67, 77, 52, 0, 0, 0, 0, 0, 128, 71, 64, 47, 0, 0, 0, 0, 0, 0, 0, 120, 156, 1, 36, 0, 219, 255, 123, 34, 99, 111, 109, 109, 97, 110, 100, 95, 116, 121, 112, 101, 34, 58, 34, 83, 67, 34, 44, 34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 110, 117, 108, 108, 125, 233, 98, 12, 155]
+[2m2025-09-03T07:51:21.447785Z[0m [32m INFO[0m [2m139:[0m ✅ Command SC completed 1985 ms before its deadline
+[2m2025-09-03T07:51:26.447571Z[0m [32m INFO[0m [2m78:[0m Scheduling drift: difference between scheduled and actual task start times for command PG: 8ms
+[2m2025-09-03T07:51:26.448001Z[0m [32m INFO[0m [2m94:[0m Command PG validated successfully (latency: 1 µs)
+[2m2025-09-03T07:51:26.448197Z[0m [32m INFO[0m [2m100:[0m Command validated: PG
+[2m2025-09-03T07:51:26.448324Z[0m [32m INFO[0m [2m102:[0m About to send command: PG
+[2m2025-09-03T07:51:26.449367Z[0m [32m INFO[0m [2m32:[0m Command sent: [3, 0, 0, 0, 0, 0, 0, 0, 67, 77, 53, 0, 0, 0, 0, 0, 128, 71, 64, 47, 0, 0, 0, 0, 0, 0, 0, 120, 156, 1, 36, 0, 219, 255, 123, 34, 99, 111, 109, 109, 97, 110, 100, 95, 116, 121, 112, 101, 34, 58, 34, 80, 71, 34, 44, 34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 110, 117, 108, 108, 125, 233, 113, 12, 156]
+[2m2025-09-03T07:51:26.449512Z[0m [32m INFO[0m [2m139:[0m ✅ Command PG completed 1989 ms before its deadline
+[2m2025-09-03T07:51:26.449633Z[0m [32m INFO[0m [2m78:[0m Scheduling drift: difference between scheduled and actual task start times for command EC: 0ms
+[2m2025-09-03T07:51:26.449747Z[0m [32m INFO[0m [2m94:[0m Command EC validated successfully (latency: 0 µs)
+[2m2025-09-03T07:51:26.449866Z[0m [32m INFO[0m [2m100:[0m Command validated: EC
+[2m2025-09-03T07:51:26.449969Z[0m [32m INFO[0m [2m102:[0m About to send command: EC
+[2m2025-09-03T07:51:26.450859Z[0m [32m INFO[0m [2m32:[0m Command sent: [3, 0, 0, 0, 0, 0, 0, 0, 67, 77, 54, 0, 0, 0, 0, 0, 0, 73, 64, 50, 0, 0, 0, 0, 0, 0, 0, 120, 156, 1, 39, 0, 216, 255, 123, 34, 99, 111, 109, 109, 97, 110, 100, 95, 116, 121, 112, 101, 34, 58, 34, 69, 67, 34, 44, 34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 34, 72, 101, 108, 108, 111, 34, 125, 12, 19, 13, 10]
+[2m2025-09-03T07:51:26.451014Z[0m [32m INFO[0m [2m139:[0m ✅ Command EC completed 1997 ms before its deadline
+[2m2025-09-03T07:51:36.454364Z[0m [32m INFO[0m [2m78:[0m Scheduling drift: difference between scheduled and actual task start times for command EC: 3ms
+[2m2025-09-03T07:51:36.454652Z[0m [32m INFO[0m [2m94:[0m Command EC validated successfully (latency: 1 µs)
+[2m2025-09-03T07:51:36.454916Z[0m [32m INFO[0m [2m100:[0m Command validated: EC
+[2m2025-09-03T07:51:36.455137Z[0m [32m INFO[0m [2m102:[0m About to send command: EC
+[2m2025-09-03T07:51:36.456329Z[0m [32m INFO[0m [2m32:[0m Command sent: [3, 0, 0, 0, 0, 0, 0, 0, 67, 77, 55, 0, 0, 0, 0, 0, 0, 73, 64, 50, 0, 0, 0, 0, 0, 0, 0, 120, 156, 1, 39, 0, 216, 255, 123, 34, 99, 111, 109, 109, 97, 110, 100, 95, 116, 121, 112, 101, 34, 58, 34, 69, 67, 34, 44, 34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 34, 72, 101, 108, 108, 111, 34, 125, 12, 19, 13, 10]
+[2m2025-09-03T07:51:36.456502Z[0m [32m INFO[0m [2m139:[0m ✅ Command EC completed 1994 ms before its deadline

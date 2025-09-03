@@ -1,3 +1,4 @@
+use crate::ground::fault_event::FaultEvent;
 use crate::ground::ground_service::GroundService;
 use crate::ground::scheduler::Scheduler;
 use crate::ground::system_state::SystemState;
@@ -33,6 +34,7 @@ impl PacketValidator {
         sensor_type: &SensorType,
         scheduler: &Arc<Mutex<Scheduler>>,
         system_state: &Arc<Mutex<SystemState>>,
+        fault_event: &mut FaultEvent,
     ) {
         let mut trigger_rerequest = false;
 
@@ -79,10 +81,10 @@ impl PacketValidator {
         if (*count == 3) {
             //simulate loss of contract
             *count = 0;
-            GroundService::trigger_loss_of_contact(&sensor_type, &scheduler).await;
+            GroundService::trigger_loss_of_contact(&sensor_type, &scheduler, fault_event).await;
         } else if (trigger_rerequest) {
             // trigger re-request
-            GroundService::trigger_rerequest(&sensor_type, &scheduler).await;
+            GroundService::trigger_rerequest(&sensor_type, &scheduler, fault_event).await;
         }
     }
 }
