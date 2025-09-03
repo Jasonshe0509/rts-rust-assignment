@@ -157,21 +157,21 @@ impl Scheduler {
                 let mut data = None;
                 let mut fault = None;
                 match task.task.name {
-                    TaskName::HealthMonitoring(rerequest)  => {
+                    TaskName::HealthMonitoring(rerequest,urgent)  => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                     guard, Some(telemetry_command.clone()),
                                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                 tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                 tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                     }
-                    TaskName::SpaceWeatherMonitoring(rerequest) => {
+                    TaskName::SpaceWeatherMonitoring(rerequest,urgent) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                     guard, Some(radiation_command.clone()),
                                                     rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                     rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                     rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                     }
-                    TaskName::AntennaAlignment(rerequest) => {
+                    TaskName::AntennaAlignment(rerequest,urgent) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
                                                     guard, Some(antenna_command.clone()),
                                                     ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),

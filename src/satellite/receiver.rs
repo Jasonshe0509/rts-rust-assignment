@@ -89,17 +89,17 @@ impl SatelliteReceiver{
                                             match sensor_type {
                                                 SensorType::OnboardTelemetrySensor => {
                                                     *guard = Some(SchedulerCommand::RHM(
-                                                        TaskType::new(TaskName::HealthMonitoring(true),
+                                                        TaskType::new(TaskName::HealthMonitoring(true, false),
                                                                       None, Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), false));
                                                 },
                                                 SensorType::RadiationSensor => {
                                                     *guard = Some(SchedulerCommand::RRM(
-                                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true),
+                                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true, false),
                                                                       None, Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), false));
                                                 },
                                                 SensorType::AntennaPointingSensor => {
                                                     *guard = Some(SchedulerCommand::RAA(
-                                                        TaskType::new(TaskName::AntennaAlignment(true),
+                                                        TaskType::new(TaskName::AntennaAlignment(true, false),
                                                                       None, Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), false));
                                                 }
                                             }
@@ -125,17 +125,17 @@ impl SatelliteReceiver{
                                             match sensor_type {
                                                 SensorType::OnboardTelemetrySensor => {
                                                     *guard = Some(SchedulerCommand::RHM(
-                                                        TaskType::new(TaskName::HealthMonitoring(true),
+                                                        TaskType::new(TaskName::HealthMonitoring(true, true),
                                                                       None, Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), true));
                                                 },
                                                 SensorType::RadiationSensor => {
                                                     *guard = Some(SchedulerCommand::RRM(
-                                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true),
+                                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true, true),
                                                                       None, Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), true));
                                                 },
                                                 SensorType::AntennaPointingSensor => {
                                                     *guard = Some(SchedulerCommand::RAA(
-                                                        TaskType::new(TaskName::AntennaAlignment(true),
+                                                        TaskType::new(TaskName::AntennaAlignment(true, true),
                                                                       None, Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), true));
                                                 }
                                             }

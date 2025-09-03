@@ -80,11 +80,11 @@ async fn main(){
                                          ant_delay_status.clone(),ant_corrupt_status.clone(),ant_inject_delay.clone(),ant_inject_corrupt.clone());
 
     //initialize tasks to be scheduled
-    let health_monitoring = TaskType::new(TaskName::HealthMonitoring(false), 
+    let health_monitoring = TaskType::new(TaskName::HealthMonitoring(false,false), 
                                           Some(HEALTH_MONITORING_TASK_INTERVAL), Duration::from_millis(HEALTH_MONITORING_TASK_DURATION));
-    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring(false), 
+    let space_weather_monitoring = TaskType::new(TaskName::SpaceWeatherMonitoring(false,false), 
                                                  Some(SPACE_WEATHER_MONITORING_TASK_INTERVAL), Duration::from_millis(SPACE_WEATHER_MONITORING_TASK_DURATION));
-    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment(false), 
+    let antenna_monitoring = TaskType::new(TaskName::AntennaAlignment(false,false), 
                                            Some(ANTENNA_MONITORING_TASK_INTERVAL), Duration::from_millis(ANTENNA_MONITORING_TASK_DURATION));
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
 
