@@ -9,7 +9,7 @@ use crate::satellite::sensor::{SensorData, SensorPayloadDataType, SensorType};
 use log::{info,warn,error};
 use serde::{Deserialize, Serialize};
 use quanta::{Instant, Clock};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex,MutexGuard};
 use tracing::Instrument;
 use crate::satellite::buffer::SensorPrioritizedBuffer;
 use crate::satellite::config;
@@ -53,7 +53,7 @@ impl TaskType{
 
 impl Task {
     pub async fn execute(&mut self, buffer: Arc<SensorPrioritizedBuffer>,
-                         scheduler_command: Arc<Mutex<Option<SchedulerCommand>>>,
+                         mut scheduler_command: MutexGuard<'_,Option<SchedulerCommand>>,
                          sensor_command: Option<Arc<Mutex<SensorCommand>>>,
                          delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
                          corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
@@ -81,7 +81,7 @@ impl Task {
                         let mut command = c.lock().await;
                         *command = SensorCommand::IP;
                     }
-                    return (None, None)
+                    return (None, None);
                 }
 
                 match buffer.pop().await {
@@ -110,7 +110,7 @@ impl Task {
                             }
                         }
                     }
-                    None => { tokio::time::sleep(Duration::from_millis(2)).await; }
+                    None => { tokio::task::yield_now().await;}
                 }
             }
             
@@ -123,12 +123,12 @@ impl Task {
             let data = self.data.as_ref();
             
             //Check Corrupt fault for periodic task
-            {
-                let corrupt_recovery = corrupt_recovery_time.lock().await;
-                if corrupt_recovery.is_some() {
-                    return (None, None);
-                }
-            }
+            // {
+            //     let corrupt_recovery = corrupt_recovery_time.lock().await;
+            //     if corrupt_recovery.is_some() {
+            //         return (None, None);
+            //     }
+            // }
 
             match data {
                 Some(data) => {
@@ -144,23 +144,26 @@ impl Task {
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::CorruptedData(data.sensor_type.clone()),
                             msg, now2));
-                        loop{
-                            let start_update_command_time = clock.now();
-                            {
-                                let mut guard = scheduler_command.lock().await;
-                                if guard.is_none(){
-                                    *guard = Some(SchedulerCommand::CDR(
-                                        TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone()));
-                                    break;
-                                }
-                            }
-      
-                            if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
-                                error!("{:?} task failed to update schedule command for request of corrupted data recovery within 100ms", self.task.name)
-                            }
-                            // yield to allow other tasks to run
-                            tokio::task::yield_now().await;
-                        }
+                        let start_update_command_time = clock.now();
+                        *scheduler_command = Some(SchedulerCommand::CDR(
+                                         TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone()));
+                        // loop{
+                        //     {
+                        //         let mut guard = scheduler_command.lock().await;
+                        //         if guard.is_none(){
+                        //             *guard = Some(SchedulerCommand::CDR(
+                        //                 TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone()));
+                        //             break;
+                        //         }
+                        //     }
+                        // 
+                        //     if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
+                        //         error!("{:?} task failed to update schedule command for request of corrupted data recovery within 100ms", self.task.name)
+                        //     }
+                        // 
+                        //     tokio::task::yield_now().await;
+                        //     
+                        // }
                         corrupt_stat.store(true, std::sync::atomic::Ordering::SeqCst);
                         return (None, fault);
                     } else if (!data.corrupt_status) && corrupt_stat.load(std::sync::atomic::Ordering::SeqCst) {
@@ -185,16 +188,16 @@ impl Task {
 
 
             //check delay fault for periodic task
-            {
-                let delay_recovery = delay_recovery_time.lock().await;
-                if delay_recovery.is_some() {
-                    return (None, None);
-                }
-            }
+            // {
+            //     let delay_recovery = delay_recovery_time.lock().await;
+            //     if delay_recovery.is_some() {
+            //         return (None, None);
+            //     }
+            // }
             match data {
                 Some(data) => {
                     let diff = actual_read_data_time - data.timestamp;
-                    if diff > chrono::Duration::milliseconds(200) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
+                    if diff > chrono::Duration::milliseconds(500) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst){
                         let msg = format!("{:?} task start receiving delayed {:?} data with {}ms delay, task terminated"
                                           , self.task.name, data.sensor_type, diff.num_milliseconds()).to_string();
                         warn!("{}",msg);
@@ -206,22 +209,23 @@ impl Task {
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::DelayedData(data.sensor_type.clone()),
                             msg, now2));
-                        loop{
-                            let start_update_command_time = clock.now();
-                            {
-                                let mut guard = scheduler_command.lock().await;
-                                if guard.is_none() {
-                                    *guard = Some(SchedulerCommand::CDR(
-                                        TaskType::new(TaskName::RecoverDelayedData, None, Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)), data.clone()));
-                                    break;
-                                }
-                            }
-                            if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
-                                error!("{:?} task failed to update schedule command for request of delayed data recovery within 100ms", self.task.name)
-                            }
-                            // yield to allow other tasks to run
-                            tokio::task::yield_now().await;
-                        }
+                        let start_update_command_time = clock.now();
+                        *scheduler_command = Some(SchedulerCommand::DDR(
+                            TaskType::new(TaskName::RecoverDelayedData, None, Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)), data.clone()));
+                        // loop{
+                        //     {
+                        //         let mut guard = scheduler_command.lock().await;
+                        //         if guard.is_none() {
+                        //             *guard = Some(SchedulerCommand::DDR(
+                        //                 TaskType::new(TaskName::RecoverDelayedData, None, Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)), data.clone()));
+                        //             break;
+                        //         }
+                        //     }
+                        //     if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
+                        //         error!("{:?} task failed to update schedule command for request of delayed data recovery within 100ms", self.task.name)
+                        //     }
+                        //     tokio::task::yield_now().await;
+                        // }
                         delay_stat.store(true, std::sync::atomic::Ordering::SeqCst);
                         return (None, fault)
                     } else if (!(diff > chrono::Duration::milliseconds(200))) && delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
@@ -246,34 +250,63 @@ impl Task {
             match self.task.name {
                 TaskName::HealthMonitoring(rerequest) => {
                     if !data.unwrap().corrupt_status{
-                        info!("Monitoring health of satellite");
-                        match data.unwrap().data{
+                        if rerequest {
+                            info!("Monitoring health of satellite (re-request)");
+                        }else {
+                            info!("Monitoring health of satellite");
+                        }
+                        match data.unwrap().data {
                             SensorPayloadDataType::TelemetryData { power, temperature, location } => {
                                 if temperature > 105.0 {
                                     warn!("Temperature is too high, thermal control needed");
-                                    *scheduler_command.lock().await = Some(SchedulerCommand::TC
+                                    let start_update_command_time = clock.now();
+                                    // loop {
+                                    //     {
+                                    //         let mut guard = scheduler_command.lock().await;
+                                    //         if guard.is_none() {
+                                    //             *guard = Some(SchedulerCommand::TC
+                                    //                 (TaskType::new(TaskName::ThermalControl, None, Duration::from_millis(config::THERMAL_CONTROL_TASK_DURATION))));
+                                    //             break;
+                                    //         }
+                                    //     }
+                                    //     if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
+                                    //         error!("Thermal Control failed to update schedule command for request within 100ms");
+                                    //     }
+                                    //     tokio::task::yield_now().await;
+                                    // }
+                                    *scheduler_command = Some(SchedulerCommand::TC
                                         (TaskType::new(TaskName::ThermalControl,None,Duration::from_millis(config::THERMAL_CONTROL_TASK_DURATION))));
+                                    info!("HIIIIIIIIIIIIIIIIIIIIIIIIIIIII");
                                 }
                             }
                             _ => ()
                         }
+                        
                     }
                 },
                 TaskName::SpaceWeatherMonitoring(rerequest) => {
                     if !data.unwrap().corrupt_status {
-                        info!("Monitoring Space Weather");
+                        if rerequest {
+                            info!("Monitoring Space Weather (re-request)");
+                        }else{
+                            info!("Monitoring Space Weather");
+                        }
+                        
                     }
                 },
                 TaskName::AntennaAlignment(rerequest) => {
                     if !data.unwrap().corrupt_status {
-                        info!("Aligning Antenna");
+                        if rerequest {
+                            info!("Aligning Antenna (re-request)");
+                        }else{
+                            info!("Aligning Antenna");
+                        }
                     }
                 }
                 _ => {error!("Unknown task discovered");}
 
             }
         }else {
-            info!("Thermal Control reducing power usage");
             match self.task.name {
                 TaskName::ThermalControl => {
                     info!("Thermal Control reducing power usage");

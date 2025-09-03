@@ -148,9 +148,10 @@ impl Scheduler {
             if let Some(command) = guard.take() {
                 self.preempt(command).await;
                 *guard = None;
-            }else{
-                drop(guard);
             }
+            // else{
+            //     drop(guard);
+            // }
             if let Some(mut task) = task_queue.lock().await.pop() {
                 is_active.store(true, std::sync::atomic::Ordering::SeqCst);
                 let mut data = None;
@@ -158,21 +159,21 @@ impl Scheduler {
                 match task.task.name {
                     TaskName::HealthMonitoring(rerequest)  => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    scheduler_command.clone(), Some(telemetry_command.clone()),
+                                                    guard, Some(telemetry_command.clone()),
                                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                 tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                 tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                     }
                     TaskName::SpaceWeatherMonitoring(rerequest) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    scheduler_command.clone(), Some(radiation_command.clone()),
+                                                    guard, Some(radiation_command.clone()),
                                                     rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                     rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                     rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                     }
                     TaskName::AntennaAlignment(rerequest) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    scheduler_command.clone(), Some(antenna_command.clone()),
+                                                    guard, Some(antenna_command.clone()),
                                                     ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                     ant_delay_stat.clone(),ant_corrupt_stat.clone(),
                                                     ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
@@ -183,21 +184,21 @@ impl Scheduler {
                         match sensor_type {
                             SensorType::OnboardTelemetrySensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            scheduler_command.clone(), Some(telemetry_command.clone()),
+                                                            guard, Some(telemetry_command.clone()),
                                                             tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                             tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                             tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                             }
                             SensorType::RadiationSensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            scheduler_command.clone(), Some(radiation_command.clone()),
+                                                            guard, Some(radiation_command.clone()),
                                                             rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                             rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                             rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                             }
                             SensorType::AntennaPointingSensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            scheduler_command.clone(), Some(antenna_command.clone()),
+                                                            guard, Some(antenna_command.clone()),
                                                             ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                             ant_delay_stat.clone(),ant_corrupt_stat.clone(),
                                                             ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
@@ -206,7 +207,7 @@ impl Scheduler {
                     }
                     _ => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    scheduler_command.clone(), None,
+                                                    guard, None,
                                                     Arc::new(Mutex::new(None)),Arc::new(Mutex::new(None)),
                                                     tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                     tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
@@ -221,6 +222,8 @@ impl Scheduler {
                     downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
                 }
                 is_active.store(false, std::sync::atomic::Ordering::SeqCst);
+            }else{
+                tokio::task::yield_now().await;
             }
         }
     }

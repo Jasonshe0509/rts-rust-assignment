@@ -82,12 +82,10 @@ impl Downlink {
             *expected_window_open_time.lock().await = datetime_utc;
             loop {
                 interval.tick().await;
-                
                 let actual_start_time = clock.now();
+                let initialize_delay = actual_start_time.duration_since(expected_next_tick).as_millis() as f64;
                 // window.store(true, Ordering::SeqCst);
                 info!("Downlink Window Opened");
-
-                let initialize_delay = actual_start_time.duration_since(expected_next_tick).as_millis() as f64;
                 if initialize_delay > 5.0 {
                     warn!("Downlink initialized exceed 5ms: {}ms causing missed communication",initialize_delay);
                     //self.window.store(false, Ordering::SeqCst);
@@ -112,18 +110,23 @@ impl Downlink {
                             } else {
                                 info!("Packet sent");
                             }
-                    } 
-                    // else {
-                    //     // queue empty → yield briefly before retrying
-                    //     tokio::task::yield_now().await;
-                    // }
+                    }
+                    else {
+                        // queue empty → yield briefly before retrying
+                        tokio::task::yield_now().await;
+                    }
                 }
                 
                 //tokio::time::sleep(Duration::from_millis(30)).await; //open for 30 ms
                 // window.store(false, Ordering::SeqCst);
                 info!("Downlink Window Closed");
                 let actual_processed_time = clock.now().duration_since(actual_start_time).as_millis() as u64;
-                system_time = SystemTime::now() + Duration::from_millis(interval_ms-actual_processed_time);
+                let remaining = if actual_processed_time < interval_ms {
+                    interval_ms - actual_processed_time
+                } else {
+                    0
+                };
+                system_time = SystemTime::now() + Duration::from_millis(remaining);
                 datetime_utc = system_time.into();
                 *expected_window_open_time.lock().await = datetime_utc;
             }
@@ -171,16 +174,12 @@ impl Downlink {
                     let compress_sensor_data = Compressor::compress(data);
 
                     let expected_arrival_time = expected_window_open_time.lock().await.clone();
-                    
+
                     let packet = PacketizeData::new(id.clone(), expected_arrival_time,
                                                     compress_sensor_data.len() as f64, compress_sensor_data);
 
                     let compress_packet = bincode::serialize(&packet).unwrap();
-
-                    //simulate degradation mode by slowing down encoding data task
-                    if degradation_mode {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                    }
+                    
                     
                     transmission_queue.push(compress_packet).await;
 
@@ -207,6 +206,14 @@ impl Downlink {
                         warn!("Degraded mode triggered: Transmission queue rate exceeded 80%");
                         degradation_mode = true;
                     }
+
+                    //simulate degradation mode by slowing down encoding data task
+                    if degradation_mode {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                }
+                else{
+                    tokio::task::yield_now().await;
                 }
             }
         });

@@ -79,7 +79,7 @@ pub struct Sensor{
 impl Sensor{
     pub fn new(sensor_type : SensorType, interval_ms : u64,
                delay_recovery: Arc<Mutex<Option<quanta::Instant>>>, corrupt_recovery: Arc<Mutex<Option<quanta::Instant>>>,
-                delay_stat: Arc<AtomicBool>, corrupt_stat: Arc<AtomicBool>, delay_inject_stat: Arc<AtomicBool>, 
+                delay_stat: Arc<AtomicBool>, corrupt_stat: Arc<AtomicBool>, delay_inject_stat: Arc<AtomicBool>,
                corrupt_inject_stat: Arc<AtomicBool>) -> Sensor{
         Sensor{
             sensor_type,
@@ -97,7 +97,7 @@ impl Sensor{
         let delay_inject = self.delay_inject.clone();
         let sensor_type = self.sensor_type.clone();
         let handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(15)).await;
             info!("{:?} started simulation for delay fault injection for every 60s",sensor_type);
             let now = tokio::time::Instant::now();
             let delay_interval = 60;
@@ -105,7 +105,7 @@ impl Sensor{
             loop{
                 interval.tick().await;
                 delay_inject.store(true, std::sync::atomic::Ordering::SeqCst);
-                info!("{:?} injected delay fault",sensor_type)
+                info!("{:?} injected delay fault",sensor_type);
             }
         });
         handle
@@ -115,7 +115,7 @@ impl Sensor{
         let corrupt_inject = self.corrupt_inject.clone();
         let sensor_type = self.sensor_type.clone();
         let handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(Duration::from_secs(5)).await;
             info!("{:?} started simulation for corrupt fault injection for every 60s",sensor_type);
             let now = tokio::time::Instant::now();
             let corrupt_interval = 60;
@@ -124,14 +124,14 @@ impl Sensor{
                 
                 interval.tick().await;
                 corrupt_inject.store(true, std::sync::atomic::Ordering::SeqCst);
-                info!("{:?} injected corrupt fault",sensor_type)
+                info!("{:?} injected corrupt fault",sensor_type);
             }
         });
         handle
     }
 
     pub fn spawn(&mut self, buffer: Arc<SensorPrioritizedBuffer>, sensor_command: Arc<Mutex<SensorCommand>>,
-                 sensor_drift: Arc<Mutex<f64>>, average_insertion_latency: Arc<Mutex<f64>>, 
+                 sensor_drift: Arc<Mutex<f64>>, average_insertion_latency: Arc<Mutex<f64>>,
                  max_insertion_latency:Arc<Mutex<f64>>, min_insertion_latency:Arc<Mutex<f64>> ) -> JoinHandle<()>{
         let interval_ms = self.interval_ms.clone();
         let sensor_type = self.sensor_type.clone();
@@ -174,7 +174,7 @@ impl Sensor{
                 }
                 
                 if delay_inject.load(std::sync::atomic::Ordering::SeqCst) {
-                    delay = Duration::from_millis(200);
+                    delay = Duration::from_millis(500);
                 }
                 
 

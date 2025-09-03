@@ -160,7 +160,7 @@ async fn main(){
     background_tasks.push(downlink.downlink_data(DOWNLINK_INTERVAL));
 
     background_tasks.push(satellite_receiver.receive_command());
-    background_tasks.push(satellite_receiver.process_command(scheduler_command.clone()));
+    background_tasks.push(satellite_receiver.process_command(scheduler_command.clone(),is_active.clone()));
     
     //Background task for simulation of delayed sensor data fault injection
     background_tasks.push(telemetry_sensor.delay_fault_injection());
@@ -198,7 +198,7 @@ async fn main(){
                     total_idle_cpu += cpu_usage;
                     total_idle += 1;
                 }
-            } else {
+            } else { 
                 warn!("Process with PID {} not found, skipping CPU measurement", pid);
             }
         }
