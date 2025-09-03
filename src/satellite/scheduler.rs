@@ -19,73 +19,86 @@ pub struct Scheduler{
     downlink_buffer: Arc<FifoQueue<TransmissionData>>,
     task_queue: Arc<Mutex<BinaryHeap<Task>>>,
     tasks: Vec<TaskType>,
+    scheduler_command: Arc<FifoQueue<SchedulerCommand>>,
 }
 
 impl Scheduler {
-    pub fn new(s_buffer: Arc<SensorPrioritizedBuffer>, d_buffer:  Arc<FifoQueue<TransmissionData>>, tasks_list: Vec<TaskType>) -> Self {
+    pub fn new(s_buffer: Arc<SensorPrioritizedBuffer>, d_buffer:  Arc<FifoQueue<TransmissionData>>, tasks_list: Vec<TaskType>, 
+               scheduler_command:Arc<FifoQueue<SchedulerCommand>>) -> Self {
         Scheduler {
             sensor_buffer: s_buffer,
             downlink_buffer: d_buffer,
             task_queue: Arc::new(Mutex::new(BinaryHeap::with_capacity(1000))),
             tasks: tasks_list,
+            scheduler_command
         }
     }
-
-    async fn preempt(&self, command: SchedulerCommand) {
-        let clock = Clock::new();
-        let now = clock.now();
-        match command {
-            SchedulerCommand::TC(task_type) => {
-                let task_name = task_type.name.clone();
-                let process_time = task_type.process_time.clone().as_millis() as u64;
-                let new_task = Task {
-                    task: task_type,
-                    release_time: now,
-                    deadline: now + Duration::from_millis(process_time),
-                    data: None,
-                    priority: 5,
-                };
-                self.task_queue.lock().await.push(new_task);
-                info!("Preempted {:?} Task", task_name);
+    pub fn check_preemption(&self) -> JoinHandle<()> {
+        let pending_command = self.scheduler_command.clone();
+        let task_queue = self.task_queue.clone();
+        let h = tokio::spawn(async move {
+            let clock = Clock::new();
+            let now = clock.now();
+            loop {
+                //Check for preemption
+                if let Some(command) = pending_command.pop().await {
+                    match command {
+                        SchedulerCommand::TC(task_type) => {
+                            let task_name = task_type.name.clone();
+                            let process_time = task_type.process_time.clone().as_millis() as u64;
+                            let new_task = Task {
+                                task: task_type,
+                                release_time: now,
+                                deadline: now + Duration::from_millis(process_time),
+                                data: None,
+                                priority: 5,
+                            };
+                            task_queue.lock().await.push(new_task);
+                            info!("Preempted {:?} Task", task_name);
+                        }
+                        SchedulerCommand::CDR(task_type, sensor_data) |
+                        SchedulerCommand::DDR(task_type, sensor_data) => {
+                            let task_name = task_type.name.clone();
+                            let process_time = task_type.process_time.clone().as_millis() as u64;
+                            let sensor_type = sensor_data.sensor_type.clone();
+                            let new_task = Task {
+                                task: task_type.clone(),
+                                release_time: now,
+                                deadline: now + Duration::from_millis(process_time),
+                                data: Some(sensor_data.clone()),
+                                priority: 5,
+                            };
+                            task_queue.lock().await.push(new_task);
+                            info!("Preempted {:?} Task for {:?}", task_name, sensor_type);
+                        }
+                        SchedulerCommand::RAA(task_type, urgent) |
+                        SchedulerCommand::RRM(task_type, urgent) |
+                        SchedulerCommand::RHM(task_type, urgent) => {
+                            let task_name = task_type.name.clone();
+                            let process_time = task_type.process_time.clone().as_millis() as u64;
+                            let new_task = Task {
+                                task: task_type.clone(),
+                                release_time: now,
+                                deadline: now + Duration::from_millis(process_time),
+                                data: None,
+                                priority: 6,
+                                // match urgent {
+                                //     true => 3,
+                                //     false => 5,
+                                // },
+                            };
+                            task_queue.lock().await.push(new_task);
+                            info!("Preempted Re-request {:?} Task", task_name);
+                        }
+                    }
+    
+                    if task_queue.lock().await.len() == 1000 {
+                        error!("Starvation occur, some tasks are never getting CPU time for execution")
+                    }
+                }
             }
-            SchedulerCommand::CDR(task_type, sensor_data) |
-            SchedulerCommand::DDR(task_type, sensor_data) => {
-                let task_name = task_type.name.clone();
-                let process_time = task_type.process_time.clone().as_millis() as u64;
-                let sensor_type = sensor_data.sensor_type.clone();
-                let new_task = Task {
-                    task: task_type,
-                    release_time: now,
-                    deadline: now + Duration::from_millis(process_time),
-                    data: Some(sensor_data),
-                    priority: 5,
-                };
-                self.task_queue.lock().await.push(new_task);
-                info!("Preempted {:?} Task for {:?}", task_name, sensor_type);
-            }
-            SchedulerCommand::RAA(task_type, urgent) |
-            SchedulerCommand::RRM(task_type, urgent) |
-            SchedulerCommand::RHM(task_type, urgent) => {
-                let task_name = task_type.name.clone();
-                let process_time = task_type.process_time.clone().as_millis() as u64;
-                let new_task = Task {
-                    task: task_type,
-                    release_time: now,
-                    deadline: now + Duration::from_millis(process_time),
-                    data: None,
-                    priority: match urgent{
-                        true => 3,
-                        false => 5,
-                    },
-                };
-                self.task_queue.lock().await.push(new_task);
-                info!("Preempted Re-request {:?} Task", task_name);
-            }
-        }
-        
-        if self.task_queue.lock().await.len() == 1000 {
-            error!("Starvation occur, some tasks are never getting CPU time for execution")
-        }
+        });
+        h 
     }
 
     pub fn schedule_task(&self) -> Vec<JoinHandle<()>>{
@@ -123,8 +136,7 @@ impl Scheduler {
         schedule_tasks_handle
     }
 
-    pub async fn execute_task(&self, scheduler_command: Arc<Mutex<Option<SchedulerCommand>>>,
-    telemetry_command: Arc<Mutex<SensorCommand>>, radiation_command: Arc<Mutex<SensorCommand>>,
+    pub async fn execute_task(&self, telemetry_command: Arc<Mutex<SensorCommand>>, radiation_command: Arc<Mutex<SensorCommand>>,
                               antenna_command: Arc<Mutex<SensorCommand>>, is_active: Arc<AtomicBool>,
                               tel_delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>, 
                               tel_corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
@@ -141,17 +153,7 @@ impl Scheduler {
         let task_queue = self.task_queue.clone();
         let downlink_buffer = self.downlink_buffer.clone();
         
-        
         loop {
-            //Check for preemption
-            let mut guard = scheduler_command.lock().await;
-            if let Some(command) = guard.take() {
-                self.preempt(command).await;
-                *guard = None;
-            }
-            // else{
-            //     drop(guard);
-            // }
             if let Some(mut task) = task_queue.lock().await.pop() {
                 is_active.store(true, std::sync::atomic::Ordering::SeqCst);
                 let mut data = None;
@@ -159,21 +161,21 @@ impl Scheduler {
                 match task.task.name {
                     TaskName::HealthMonitoring(rerequest,urgent)  => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    guard, Some(telemetry_command.clone()),
+                                                    self.scheduler_command.clone(), Some(telemetry_command.clone()),
                                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                 tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                 tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                     }
                     TaskName::SpaceWeatherMonitoring(rerequest,urgent) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    guard, Some(radiation_command.clone()),
+                                                    self.scheduler_command.clone(), Some(radiation_command.clone()),
                                                     rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                     rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                     rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                     }
                     TaskName::AntennaAlignment(rerequest,urgent) => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    guard, Some(antenna_command.clone()),
+                                                    self.scheduler_command.clone(), Some(antenna_command.clone()),
                                                     ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                     ant_delay_stat.clone(),ant_corrupt_stat.clone(),
                                                     ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
@@ -184,21 +186,21 @@ impl Scheduler {
                         match sensor_type {
                             SensorType::OnboardTelemetrySensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            guard, Some(telemetry_command.clone()),
+                                                            self.scheduler_command.clone(), Some(telemetry_command.clone()),
                                                             tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                             tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                             tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
                             }
                             SensorType::RadiationSensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            guard, Some(radiation_command.clone()),
+                                                            self.scheduler_command.clone(), Some(radiation_command.clone()),
                                                             rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                             rad_delay_stat.clone(),rad_corrupt_stat.clone(),
                                                             rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
                             }
                             SensorType::AntennaPointingSensor => {
                                 (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                            guard, Some(antenna_command.clone()),
+                                                            self.scheduler_command.clone(), Some(antenna_command.clone()),
                                                             ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                             ant_delay_stat.clone(),ant_corrupt_stat.clone(),
                                                             ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
@@ -207,7 +209,7 @@ impl Scheduler {
                     }
                     _ => {
                         (data,fault) = task.execute(self.sensor_buffer.clone(),
-                                                    guard, None,
+                                                    self.scheduler_command.clone(), None,
                                                     Arc::new(Mutex::new(None)),Arc::new(Mutex::new(None)),
                                                     tel_delay_stat.clone(),tel_corrupt_stat.clone(),
                                                     tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
@@ -222,8 +224,6 @@ impl Scheduler {
                     downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
                 }
                 is_active.store(false, std::sync::atomic::Ordering::SeqCst);
-            }else{
-                tokio::task::yield_now().await;
             }
         }
     }

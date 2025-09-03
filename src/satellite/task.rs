@@ -14,8 +14,9 @@ use tracing::Instrument;
 use crate::satellite::buffer::SensorPrioritizedBuffer;
 use crate::satellite::config;
 use crate::satellite::fault_message::{FaultMessageData, FaultSituation, FaultType};
+use crate::satellite::FIFO_queue::FifoQueue;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskName {
     HealthMonitoring(bool, bool),  //first bool is it preempted task, second bool is it urgent so only first is true second bool only got meaning
     SpaceWeatherMonitoring(bool, bool),
@@ -33,7 +34,7 @@ pub struct Task{
     pub priority: u8,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq,Eq, Serialize, Deserialize)]
 pub struct TaskType {
     pub name: TaskName,
     pub interval_ms: Option<u64>,
@@ -53,7 +54,7 @@ impl TaskType{
 
 impl Task {
     pub async fn execute(&mut self, buffer: Arc<SensorPrioritizedBuffer>,
-                         mut scheduler_command: MutexGuard<'_,Option<SchedulerCommand>>,
+                         scheduler_command: Arc<FifoQueue<SchedulerCommand>>,
                          sensor_command: Option<Arc<Mutex<SensorCommand>>>,
                          delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
                          corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
@@ -122,6 +123,26 @@ impl Task {
             
             let data = self.data.as_ref();
             
+            
+            match self.task.name {
+                TaskName::HealthMonitoring(rerequest,urgent) |
+                TaskName::SpaceWeatherMonitoring(rerequest,urgent) |
+                TaskName::AntennaAlignment(rerequest,urgent) => {
+                    let sensor_type = self.data.clone().unwrap().sensor_type;
+                    if rerequest {
+                        info!("Performing re-request for {:?}",&sensor_type);
+                        fault = Some(FaultMessageData::new(
+                            FaultType::Fault, match urgent{
+                                false => FaultSituation::RespondReRequest,
+                                true => FaultSituation::RespondLossOfContact
+                            }(sensor_type),
+                            "Space Weather Monitoring Done".to_string(), Utc::now()));
+                        return (self.data.clone(), fault);
+                    }
+                }
+                _ => {}
+            }
+            
 
             match data {
                 Some(data) => {
@@ -137,9 +158,9 @@ impl Task {
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::CorruptedData(data.sensor_type.clone()),
                             msg, now2));
-                        let start_update_command_time = clock.now();
-                        *scheduler_command = Some(SchedulerCommand::CDR(
-                                         TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone()));
+                        
+                        scheduler_command.push(SchedulerCommand::CDR(
+                                            TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone())).await;
     
                         corrupt_stat.store(true, std::sync::atomic::Ordering::SeqCst);
                         return (None, fault);
@@ -179,9 +200,8 @@ impl Task {
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::DelayedData(data.sensor_type.clone()),
                             msg, now2));
-                        let start_update_command_time = clock.now();
-                        *scheduler_command = Some(SchedulerCommand::DDR(
-                            TaskType::new(TaskName::RecoverDelayedData, None, Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)), data.clone()));
+                        scheduler_command.push(SchedulerCommand::DDR(
+                                TaskType::new(TaskName::RecoverDelayedData, None, Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)), data.clone())).await;
 
                         delay_stat.store(true, std::sync::atomic::Ordering::SeqCst);
                         return (None, fault)
@@ -208,25 +228,13 @@ impl Task {
             match self.task.name {
                 TaskName::HealthMonitoring(rerequest,urgent) => {
                     if !data.unwrap().corrupt_status{
-                        if rerequest {
-                            info!("Monitoring health of satellite (re-request)");
-                            fault = Some(FaultMessageData::new(
-                                FaultType::Fault, match urgent{
-                                    false => FaultSituation::RespondReRequest, 
-                                    true => FaultSituation::RespondLossOfContact
-                                }(self.data.clone().unwrap().sensor_type),
-                                "Health Monitoring Done".to_string(), Utc::now()));
-                        }else {
-                            info!("Monitoring health of satellite");
-                        }
+                        info!("Monitoring health of satellite");
                         match data.unwrap().data {
                             SensorPayloadDataType::TelemetryData { power, temperature, location } => {
                                 if temperature > 105.0 {
                                     warn!("Temperature is too high, thermal control needed");
-                                    let start_update_command_time = clock.now();
-                                    *scheduler_command = Some(SchedulerCommand::TC
-                                        (TaskType::new(TaskName::ThermalControl,None,Duration::from_millis(config::THERMAL_CONTROL_TASK_DURATION))));
-                                    info!("HIIIIIIIIIIIIIIIIIIIIIIIIIIIII");
+                                    scheduler_command.push(SchedulerCommand::TC
+                                                               (TaskType::new(TaskName::ThermalControl,None,Duration::from_millis(config::THERMAL_CONTROL_TASK_DURATION)))).await;
                                 }
                             }
                             _ => ()
@@ -236,33 +244,14 @@ impl Task {
                 },
                 TaskName::SpaceWeatherMonitoring(rerequest,urgent) => {
                     if !data.unwrap().corrupt_status {
-                        if rerequest {
-                            info!("Monitoring Space Weather (re-request)");
-                            fault = Some(FaultMessageData::new(
-                                FaultType::Fault, match urgent{
-                                    false => FaultSituation::RespondReRequest,
-                                    true => FaultSituation::RespondLossOfContact
-                                }(self.data.clone().unwrap().sensor_type),
-                                "Space Weather Monitoring Done".to_string(), Utc::now()));
-                        }else{
-                            info!("Monitoring Space Weather");
-                        }
+                        info!("Monitoring Space Weather");
+                        
 
                     }
                 },
                 TaskName::AntennaAlignment(rerequest,urgent) => {
                     if !data.unwrap().corrupt_status {
-                        if rerequest {
-                            info!("Aligning Antenna (re-request)");
-                            fault = Some(FaultMessageData::new(
-                                FaultType::Fault, match urgent{
-                                    false => FaultSituation::RespondReRequest,
-                                    true => FaultSituation::RespondLossOfContact
-                                }(self.data.clone().unwrap().sensor_type),
-                                " Antenna Alignment Done".to_string(), Utc::now()));
-                        }else{
-                            info!("Aligning Antenna");
-                        }
+                        info!("Aligning Antenna");
                     }
                 }
                 _ => {error!("Unknown task discovered");}

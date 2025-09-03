@@ -89,7 +89,7 @@ async fn main(){
     let task_to_schedule = vec![health_monitoring, space_weather_monitoring, antenna_monitoring];
 
     
-    let scheduler_command:Arc<Mutex<Option<SchedulerCommand>>> = Arc::new(Mutex::new(None));
+    let scheduler_command = Arc::new(FifoQueue::new(2000));
     let telemetry_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let radiation_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
     let antenna_sensor_command = Arc::new(Mutex::new(SensorCommand::NP));
@@ -99,7 +99,7 @@ async fn main(){
     let transmission_queue = Arc::new(FifoQueue::new(TRANSMISSION_QUEUE_SIZE));
 
     //initialize task scheduler
-    let scheduler = Scheduler::new(sensor_buffer.clone(),downlink_buffer.clone(),task_to_schedule);
+    let scheduler = Scheduler::new(sensor_buffer.clone(),downlink_buffer.clone(),task_to_schedule,scheduler_command.clone());
     
     //initialize scheduler active or idle status
     let is_active = Arc::new(AtomicBool::new(false));
@@ -116,7 +116,7 @@ async fn main(){
     let downlink = Downlink::new(downlink_buffer.clone(),transmission_queue,channel.clone(),SATELLITE_DOWNLINK_QUEUE_NAME.to_string());
     
     //initialize receiver
-    let satellite_receiver = SatelliteReceiver::new(channel.clone(),GROUND_DOWNLINK_QUEUE_NAME.to_string());
+    let satellite_receiver = SatelliteReceiver::new(channel.clone(),GROUND_DOWNLINK_QUEUE_NAME.to_string(),scheduler_command.clone());
     
     
     let mut background_tasks = Vec::new();
@@ -134,15 +134,14 @@ async fn main(){
                                                 antenna_sensor_avg_latency.clone(),antenna_sensor_max_latency.clone(),
                                                antenna_sensor_min_latency.clone()));
 
-    //Background task for real-time scheduler schedule & execute tasks
+    //Background task for real-time scheduler schedule, check preemption and execute tasks
     for schedule_handle in scheduler.schedule_task(){
         background_tasks.push(schedule_handle);
     }
-
+    background_tasks.push(scheduler.check_preemption());
     let is_active_clone = is_active.clone();
-    let scheduler_command_clone = scheduler_command.clone();
     background_tasks.push(tokio::spawn(async move {
-        scheduler.execute_task(scheduler_command_clone,telemetry_sensor_command.clone(),
+        scheduler.execute_task(telemetry_sensor_command.clone(),
                                radiation_sensor_command.clone(), antenna_sensor_command.clone(),is_active_clone,
                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
@@ -154,13 +153,14 @@ async fn main(){
                                rad_inject_delay.clone(),rad_inject_corrupt.clone(),
                                ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
     }));
+    
 
     //Background task for downlink of window controller & process data & downlink data
     background_tasks.push(downlink.process_data());
     background_tasks.push(downlink.downlink_data(DOWNLINK_INTERVAL));
 
     background_tasks.push(satellite_receiver.receive_command());
-    background_tasks.push(satellite_receiver.process_command(scheduler_command.clone(),is_active.clone()));
+    background_tasks.push(satellite_receiver.process_command());
     
     //Background task for simulation of delayed sensor data fault injection
     background_tasks.push(telemetry_sensor.delay_fault_injection());

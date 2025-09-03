@@ -24,15 +24,17 @@ pub struct SatelliteReceiver{
     command_buffer: Arc<FifoQueue<DataDetails>>,
     channel: Channel,
     uplink_queue_name: String,
+    scheduler_command: Arc<FifoQueue<SchedulerCommand>>,
 }
 
 impl SatelliteReceiver{
-    pub fn new(channel: Channel, uplink_queue_name: String) -> Self
+    pub fn new(channel: Channel, uplink_queue_name: String, scheduler_command: Arc<FifoQueue<SchedulerCommand>>) -> Self
     {
         Self{
             command_buffer: Arc::new(FifoQueue::new(1000)),
             channel,
             uplink_queue_name,
+            scheduler_command
         }
     }
 
@@ -60,9 +62,9 @@ impl SatelliteReceiver{
         handle
     }
 
-    pub fn process_command(&self, scheduler_command: Arc<Mutex<Option<SchedulerCommand>>>, is_active: Arc<AtomicBool>) -> JoinHandle<()> {
+    pub fn process_command(&self) -> JoinHandle<()> {
         let command_buffer = self.command_buffer.clone();
-        let scheduler_command = scheduler_command.clone();
+        let scheduler_command = self.scheduler_command.clone();
         let handle = tokio::spawn(async move{
             let clock = Clock::new();
             loop{
@@ -80,76 +82,45 @@ impl SatelliteReceiver{
                            info!("Satellite Respond to Ground's Command 'EC': {:?}",msg);
                         },
                         CommandType::RR(sensor_type) => {
-                            let start_update_command_time = clock.now();
-                            loop{
-                                {
-                                    if !is_active.load(std::sync::atomic::Ordering::SeqCst) {
-                                        let mut guard = scheduler_command.lock().await;
-                                        if guard.is_none() {
-                                            match sensor_type {
-                                                SensorType::OnboardTelemetrySensor => {
-                                                    *guard = Some(SchedulerCommand::RHM(
-                                                        TaskType::new(TaskName::HealthMonitoring(true, false),
-                                                                      None, Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), false));
-                                                },
-                                                SensorType::RadiationSensor => {
-                                                    *guard = Some(SchedulerCommand::RRM(
-                                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true, false),
-                                                                      None, Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), false));
-                                                },
-                                                SensorType::AntennaPointingSensor => {
-                                                    *guard = Some(SchedulerCommand::RAA(
-                                                        TaskType::new(TaskName::AntennaAlignment(true, false),
-                                                                      None, Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), false));
-                                                }
-                                            }
-                                            info!("Satellite Respond to Ground's Command 'RR': Command sent to scheduler");
-                                            break;
-                                        }
-                                    }
+                            match sensor_type {
+                                SensorType::OnboardTelemetrySensor => {
+                                    scheduler_command.push(SchedulerCommand::RHM(
+                                        TaskType::new(TaskName::HealthMonitoring(true, false),
+                                                      None, Duration::from_millis(config::REREQUEST_TASK_DURATION)), false)).await;
+                                },
+                                SensorType::RadiationSensor => {
+                                    scheduler_command.push(SchedulerCommand::RRM(
+                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true, false),
+                                                      None, Duration::from_millis(config::REREQUEST_TASK_DURATION)), false)).await;
+                                },
+                                SensorType::AntennaPointingSensor => {
+                                    scheduler_command.push(SchedulerCommand::RAA(
+                                        TaskType::new(TaskName::AntennaAlignment(true, false),
+                                                      None, Duration::from_millis(config::REREQUEST_TASK_DURATION)), false)).await;
                                 }
-                                if clock.now().duration_since(start_update_command_time) > Duration::from_secs(3) {
-                                    warn!("Satellite Failed Respond to Ground's Command 'RR {:?}': within 3s",sensor_type);
-                                }
-                                // yield to allow other tasks to run
-                                tokio::task::yield_now().await;
                             }
+                            info!("Satellite Respond to Ground's Command 'RR': Command sent to scheduler");
+                            
                         },
                         CommandType::LC(sensor_type) => {
-                            let start_update_command_time = clock.now();
-                            loop{
-                                {
-                                    if !is_active.load(std::sync::atomic::Ordering::SeqCst) {
-                                        let mut guard = scheduler_command.lock().await;
-                                        if guard.is_none() {
-                                            match sensor_type {
-                                                SensorType::OnboardTelemetrySensor => {
-                                                    *guard = Some(SchedulerCommand::RHM(
-                                                        TaskType::new(TaskName::HealthMonitoring(true, true),
-                                                                      None, Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), true));
-                                                },
-                                                SensorType::RadiationSensor => {
-                                                    *guard = Some(SchedulerCommand::RRM(
-                                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true, true),
-                                                                      None, Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), true));
-                                                },
-                                                SensorType::AntennaPointingSensor => {
-                                                    *guard = Some(SchedulerCommand::RAA(
-                                                        TaskType::new(TaskName::AntennaAlignment(true, true),
-                                                                      None, Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), true));
-                                                }
-                                            }
-                                            info!("Satellite Respond to Ground's Command 'LC': Command sent to scheduler");
-                                            break;
-                                        }
-                                    }
+                            match sensor_type {
+                                SensorType::OnboardTelemetrySensor => {
+                                    scheduler_command.push(SchedulerCommand::RHM(
+                                        TaskType::new(TaskName::HealthMonitoring(true, true),
+                                                      None, Duration::from_millis(config::REREQUEST_TASK_DURATION)), true)).await;
+                                },
+                                SensorType::RadiationSensor => {
+                                    scheduler_command.push(SchedulerCommand::RRM(
+                                        TaskType::new(TaskName::SpaceWeatherMonitoring(true, true),
+                                                      None, Duration::from_millis(config::REREQUEST_TASK_DURATION)), true)).await;
+                                },
+                                SensorType::AntennaPointingSensor => {
+                                    scheduler_command.push(SchedulerCommand::RAA(
+                                        TaskType::new(TaskName::AntennaAlignment(true, true),
+                                                      None, Duration::from_millis(config::REREQUEST_TASK_DURATION)), true)).await;
                                 }
-                                if clock.now().duration_since(start_update_command_time) > Duration::from_secs(3) {
-                                    warn!("Satellite Failed Respond to Ground's Command 'LC {:?}': within 3s",sensor_type);
-                                }
-                                // yield to allow other tasks to run
-                                tokio::task::yield_now().await;
                             }
+                            info!("Satellite Respond to Ground's Command 'LC': Command sent to scheduler");
                         }
                     }
                 }

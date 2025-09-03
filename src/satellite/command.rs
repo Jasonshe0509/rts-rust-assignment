@@ -1,9 +1,10 @@
+use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
 use crate::satellite::sensor::SensorData;
 use crate::satellite::task::{TaskName, TaskType};
 
 
-
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SchedulerCommand {
     TC(TaskType), //Thermal Control Task (internal)
     RHM(TaskType, bool), //Preempt Health Monitoring Task (internal)
