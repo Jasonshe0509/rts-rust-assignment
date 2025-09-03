@@ -1,14 +1,15 @@
+use crate::ground::command::Command;
 use crate::ground::fault_event::FaultEvent;
 use crate::ground::ground_service::GroundService;
-use crate::ground::scheduler::Scheduler;
 use crate::ground::system_state::SystemState;
 use crate::satellite::downlink::PacketizeData;
 use crate::satellite::sensor::SensorType;
+use crate::util::trigger_tracker::TriggerTracker;
+use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tracing::warn;
-use crate::ground::command::Command;
+use tokio::sync::{Mutex, Notify};
+use tracing::{info, warn};
 
 pub struct PacketValidator {
     expected_prefixes: Vec<&'static str>,
@@ -36,6 +37,8 @@ impl PacketValidator {
         schedule_command: Arc<Mutex<Option<Command>>>,
         system_state: &Arc<Mutex<SystemState>>,
         fault_event: &mut FaultEvent,
+        tracker: &TriggerTracker,
+        notify: &Arc<Notify>,
     ) {
         let mut trigger_rerequest = false;
 
@@ -60,7 +63,7 @@ impl PacketValidator {
         if num > 1 && num > prev_max + 1 {
             for missing in prev_max + 1..num {
                 if !reported_set.contains(&missing) {
-                    warn!("⚠️ Missing packet: {}{}", prefix, missing);
+                    warn!("Missing packet: {}{} has been detected", prefix, missing);
                     reported_set.insert(missing);
                     *count += 1;
                     trigger_rerequest = true;
@@ -68,7 +71,7 @@ impl PacketValidator {
                 }
             }
         } else if (drift > &self.delay_threshold_ms) {
-            warn!("⚠️ Packet {} delayed by {} ms", packet.packet_id, drift);
+            warn!("Packet {} delayed by {} ms", packet.packet_id, drift);
             *count += 1;
             trigger_rerequest = true;
             state.update_sensor_failure(&sensor_type, true);
@@ -82,10 +85,40 @@ impl PacketValidator {
         if (*count == 3) {
             //simulate loss of contract
             *count = 0;
-            GroundService::trigger_loss_of_contact(&sensor_type, schedule_command.clone(), fault_event).await;
+            let start = Utc::now();
+            info!("Triggering Loss of Contact for sensor {:?}", sensor_type);
+            GroundService::trigger_loss_of_contact(
+                &sensor_type,
+                schedule_command.clone(),
+                fault_event,
+                tracker,
+                notify,
+            )
+            .await;
+            let duration = Utc::now().signed_duration_since(start).num_milliseconds();
+            info!(
+                "Loss of Contact for sensor {:?} trigger completed in {} ms",
+                sensor_type, duration
+            );
         } else if (trigger_rerequest) {
             // trigger re-request
-            GroundService::trigger_rerequest(&sensor_type, schedule_command.clone(), fault_event).await;
+            let start = Utc::now();
+            info!("Triggering Re-request for sensor {:?}", sensor_type);
+            GroundService::trigger_rerequest(
+                &sensor_type,
+                schedule_command.clone(),
+                fault_event,
+                tracker,
+                notify,
+            )
+            .await;
+            let duration = Utc::now().signed_duration_since(start).num_milliseconds();
+            info!(
+                "Re-request for sensor {:?} trigger completed in {} ms",
+                sensor_type, duration
+            );
+        } else {
+            info!("Packet {} does not consist any error!", packet.packet_id);
         }
     }
 }

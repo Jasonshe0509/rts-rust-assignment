@@ -15,7 +15,7 @@ impl Sender {
             queue_name: queue_name.to_string(),
         }
     }
-    pub async fn send_command(&self, packet: &Vec<u8>) {
+    pub async fn send_command(&self, packet: &Vec<u8>, packet_id: &String) {
         if let Err(e) = self
             .channel
             .basic_publish(
@@ -29,7 +29,7 @@ impl Sender {
         {
             error!("Failed to send command: {}", e);
         } else {
-            info!("Command sent: {:?}", packet);
+            info!("Command has been sent with packet {}", packet_id);
         }
     }
 }

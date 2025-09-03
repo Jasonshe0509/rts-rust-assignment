@@ -19,33 +19,33 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(sender: Sender, system_state: Arc<Mutex<SystemState>>) -> Self {
+    pub fn new(sender: Sender, system_state: Arc<Mutex<SystemState>>, notify: Arc<Notify>) -> Self {
         let mut heap = BinaryHeap::new();
 
         // default commands
         heap.push(Command::new(
             CommandType::PG,
             1,
-            ChronoDuration::seconds(15),
-            ChronoDuration::seconds(2),
+            ChronoDuration::milliseconds(900),
+            ChronoDuration::milliseconds(300),
         ));
         heap.push(Command::new(
             CommandType::SC,
             1,
-            ChronoDuration::seconds(25),
-            ChronoDuration::seconds(2),
+            ChronoDuration::milliseconds(800),
+            ChronoDuration::milliseconds(300),
         ));
         heap.push(Command::new(
             CommandType::EC,
             1,
-            ChronoDuration::seconds(10),
-            ChronoDuration::seconds(2),
+            ChronoDuration::milliseconds(600),
+            ChronoDuration::milliseconds(300),
         ));
         Self {
             heap,
             sender,
             system_state,
-            notify: Arc::new(Notify::new()),
+            notify,
         }
     }
 
@@ -53,15 +53,22 @@ impl Scheduler {
         loop {
             let now = Utc::now();
             let mut sched = schedule_command.lock().await;
+            info!("Checking for new command request");
             if let Some(command) = sched.take() {
                 self.heap.push(command);
+                info!(
+                    "Command successfully pushed into scheduler heap (heap size: {})",
+                    self.heap.len()
+                );
                 *sched = None;
             } else {
                 drop(sched);
+                info!("No new command request found");
             }
             if let Some(command) = self.heap.peek() {
                 if command.release_time <= now {
                     let mut command = self.heap.pop().unwrap();
+                    info!("Command: {:?} has been released for execution", command.command_type);
 
                     // urgent commands (≤2ms dispatch)
                     let dispatch_latency = now
@@ -89,9 +96,10 @@ impl Scheduler {
                     }
 
                     let start = std::time::Instant::now();
+                    info!("Validating command whether safe for execute");
                     if let Err(e) = command.validate(&self.system_state).await {
                         let latency_us = start.elapsed().as_micros(); // microseconds
-                        error!(
+                        warn!(
                             "Command {:?} rejected due to {:?} (latency: {} µs)",
                             command.command_type, e, latency_us
                         );
@@ -104,10 +112,8 @@ impl Scheduler {
                         );
                     }
 
-                    info!("Command validated: {:?}", command.command_type);
 
-                    info!("About to send command: {:?}", command.command_type);
-
+                    info!("Preparing data details for uplink: {:?}", command.command_type);
                     let data_details = match DataDetails::new(&command.command_type) {
                         Ok(details) => details,
                         Err(e) => {
@@ -115,12 +121,16 @@ impl Scheduler {
                             continue;
                         }
                     };
-
+                    
+                    info!("Compressing the data details : {:?} for uplink: {:?}", data_details, command.command_type);
                     let data = Compressor::compress(data_details);
+                    info!("Preparing packet data for uplink: {:?}", command.command_type);
                     let packet_data = PacketizeData::new(data.len() as f64, data);
+                    info!("Data has been packed with id {}, ready for serialization", packet_data.packet_id);
                     let packet = bincode::serialize(&packet_data).unwrap();
-
-                    self.sender.send_command(&packet).await;
+                    info!("Packet {} has been serialize , ready for uplink: {:?}", packet_data.packet_id, command.command_type);
+                    self.sender.send_command(&packet, &packet_data.packet_id).await;
+                    
 
                     match &command.command_type {
                         CommandType::LC(sensor) => {
@@ -135,7 +145,7 @@ impl Scheduler {
                             .signed_duration_since(command.absolute_deadline)
                             .num_milliseconds();
                         warn!(
-                            "⚠️ Command {:?} exceeded its deadline by {} ms",
+                            "Command {:?} exceeded its deadline by {} ms",
                             command.command_type, miss
                         );
                     } else {
@@ -144,7 +154,7 @@ impl Scheduler {
                             .signed_duration_since(complete_time)
                             .num_milliseconds();
                         info!(
-                            "✅ Command {:?} completed {} ms before its deadline",
+                            "Command {:?} completed {} ms before its deadline",
                             command.command_type, early
                         );
                     }
@@ -161,22 +171,20 @@ impl Scheduler {
 
                     tokio::select! {
                         _ = sleep_until(target_instant) => {},
-                        _ = self.notify.notified() => {},
+                        _ = self.notify.notified() => {
+                            info!("Notified has been received, new command has been added");
+                        },
                     }
                 }
             } else {
                 let sleep_until_instant = Instant::now() + StdDuration::from_millis(10);
                 tokio::select! {
                 _ = sleep_until(sleep_until_instant) => {},
-                _ = self.notify.notified() => {},
+                _ = self.notify.notified() => {
+                        info!("Notified has been received, new command has been added");
+                    },
                 }
             }
         }
-    }
-
-    pub fn add_one_shot_command(&mut self, command: Command) {
-        info!("Added command to scheduler: {:?}", command.command_type);
-        self.heap.push(command);
-        self.notify.notify_one();
     }
 }

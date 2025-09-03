@@ -1,12 +1,12 @@
 use crate::ground::command::{Command, CommandType};
 use crate::ground::fault_event::{FaultEvent, FaultResolveData};
-use crate::ground::scheduler::Scheduler;
 use crate::ground::system_state::SystemState;
 use crate::satellite::fault_message::{FaultMessageData, FaultSituation, FaultType};
 use crate::satellite::sensor::SensorType;
+use crate::util::trigger_tracker::TriggerTracker;
 use chrono::{Duration, Utc};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tracing::{error, info, warn};
 
 pub struct GroundService {}
@@ -16,10 +16,18 @@ impl GroundService {
         sensor_type: &SensorType,
         schedule_command: Arc<Mutex<Option<Command>>>,
         fault_event: &mut FaultEvent,
+        tracker: &TriggerTracker,
+        notify: &Arc<Notify>,
     ) {
+        let situation = FaultSituation::ReRequest(sensor_type.clone());
+
+        if !Self::check_cooldown(tracker, &situation).await {
+            return;
+        }
+        
         let fault_message_data = FaultMessageData {
             fault_type: FaultType::Fault,
-            situation: FaultSituation::ReRequest(sensor_type.clone()),
+            situation,
             timestamp: Utc::now(),
             message: format!("Fault: Re-request for {:?} has been detected", sensor_type),
         };
@@ -27,8 +35,8 @@ impl GroundService {
         let command = Command::new_one_shot(
             CommandType::RR(sensor_type.clone()),
             3,
-            Duration::seconds(5),
-            Duration::seconds(2),
+            Duration::milliseconds(600),
+            Duration::milliseconds(400),
         );
 
         loop {
@@ -36,25 +44,31 @@ impl GroundService {
                 let mut command_schedule = schedule_command.lock().await;
                 if (command_schedule.is_none()) {
                     *command_schedule = Some(command.clone());
+                    notify.notify_one();
                     break;
                 }
             }
             //yield to allow other tasks to run
             tokio::task::yield_now().await;
         }
-
-        // let mut sched = scheduler.lock().await;
-        // sched.add_one_shot_command(command);
     }
 
     pub async fn trigger_loss_of_contact(
         sensor_type: &SensorType,
         schedule_command: Arc<Mutex<Option<Command>>>,
         fault_event: &mut FaultEvent,
+        tracker: &TriggerTracker,
+        notify: &Arc<Notify>,
     ) {
+        let situation = FaultSituation::LossOfContact(sensor_type.clone());
+
+        if !Self::check_cooldown(tracker, &situation).await {
+            return;
+        }
+        
         let fault_message_data = FaultMessageData {
             fault_type: FaultType::Fault,
-            situation: FaultSituation::LossOfContact(sensor_type.clone()),
+            situation,
             timestamp: Utc::now(),
             message: format!(
                 "Fault: Loss of contact for {:?} has been detected",
@@ -65,23 +79,21 @@ impl GroundService {
         let command = Command::new_one_shot(
             CommandType::LC(sensor_type.clone()),
             5,
-            Duration::seconds(0),
-            Duration::seconds(2),
+            Duration::milliseconds(0),
+            Duration::milliseconds(400),
         );
         loop {
             {
                 let mut command_schedule = schedule_command.lock().await;
                 if (command_schedule.is_none()) {
                     *command_schedule = Some(command.clone());
+                    notify.notify_one();
                     break;
                 }
             }
             //yield to allow other tasks to run
             tokio::task::yield_now().await;
         }
-
-        // let mut sched = scheduler.lock().await;
-        // sched.add_one_shot_command(command);
     }
 
     pub async fn fault_detection(
@@ -97,9 +109,17 @@ impl GroundService {
                     fault_message_data.situation
                 );
                 fault_event.add_fault(&fault_message_data);
+                info!(
+                    "Update system state sensor {:?} status to deactivate",
+                    sensor
+                );
                 state.set_sensor_active(sensor, false)
             }
             FaultSituation::CorruptedDataRecovered(sensor) => {
+                info!(
+                    "Recovery: {:?} has been found from the satellite.",
+                    fault_message_data.situation
+                );
                 Self::handle_recovery(
                     fault_event,
                     &sensor,
@@ -109,6 +129,10 @@ impl GroundService {
                 );
             }
             FaultSituation::DelayedDataRecovered(sensor) => {
+                info!(
+                    "Recovery: {:?} has been found from the satellite.",
+                    fault_message_data.situation
+                );
                 Self::handle_recovery(
                     fault_event,
                     &sensor,
@@ -118,6 +142,10 @@ impl GroundService {
                 );
             }
             FaultSituation::RespondReRequest(sensor) => {
+                info!(
+                    "Recovery: {:?} has been found from the satellite.",
+                    fault_message_data.situation
+                );
                 Self::handle_recovery(
                     fault_event,
                     &sensor,
@@ -127,6 +155,10 @@ impl GroundService {
                 );
             }
             FaultSituation::RespondLossOfContact(sensor) => {
+                info!(
+                    "Recovery: {:?} has been found from the satellite.",
+                    fault_message_data.situation
+                );
                 Self::handle_recovery(
                     fault_event,
                     &sensor,
@@ -180,7 +212,30 @@ impl GroundService {
 
             fault_event.add_fault_resolve(resolve_data);
         }
-
+        info!(
+            "Update system state sensor {:?} status to reactivate",
+            sensor
+        );
         state.set_sensor_active(sensor, true);
     }
+
+    async fn check_cooldown(tracker: &TriggerTracker, situation: &FaultSituation) -> bool {
+        let now = Utc::now();
+        let mut map = tracker.lock().await;
+        if let Some(last) = map.get(situation) {
+            info!("Situation: {:?} is cooldown", situation);
+            let since_last = now.signed_duration_since(*last).num_seconds();
+            if since_last < 10 {
+                warn!(
+                "{:?} ignored (only {}s since last trigger, needs 10s cooldown)",
+                situation, since_last
+            );
+                return false;
+            }
+        }
+        // update last trigger time
+        map.insert(situation.clone(), now);
+        true
+    }
+
 }

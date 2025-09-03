@@ -19,7 +19,7 @@ pub enum CommandType {
 pub struct Command {
     pub command_type: CommandType,
     pub priority: u8,
-    pub interval_secs: Duration, //period in second
+    pub interval_millis: Duration, //period in second
     pub release_time: DateTime<Utc>,
     pub relative_deadline: Duration, // in seconds
     pub absolute_deadline: DateTime<Utc>,
@@ -30,36 +30,36 @@ impl Command {
     pub fn new(
         command_type: CommandType,
         priority: u8,
-        interval_secs: Duration,
-        relative_deadline_secs: Duration,
+        interval_millis: Duration,
+        relative_deadline_millis: Duration,
     ) -> Self {
         let now = Utc::now();
-        let release_time = now + interval_secs;
+        let release_time = now + interval_millis;
         Self {
             command_type,
             priority,
-            interval_secs,
+            interval_millis,
             release_time,
-            relative_deadline: relative_deadline_secs,
-            absolute_deadline: release_time + relative_deadline_secs,
+            relative_deadline: relative_deadline_millis,
+            absolute_deadline: release_time + relative_deadline_millis,
             one_shot: false,
         }
     }
     pub fn new_one_shot(
         command_type: CommandType,
         priority: u8,
-        interval_secs: Duration,
-        relative_deadline_secs: Duration,
+        interval_millis: Duration,
+        relative_deadline_millis: Duration,
     ) -> Self {
         let now = Utc::now();
-        let release_time = now + interval_secs;
+        let release_time = now + interval_millis;
         Self {
             command_type,
             priority,
-            interval_secs,
+            interval_millis,
             release_time,
-            relative_deadline: relative_deadline_secs,
-            absolute_deadline: release_time + relative_deadline_secs,
+            relative_deadline: relative_deadline_millis,
+            absolute_deadline: release_time + relative_deadline_millis,
             one_shot: true,
         }
     }
@@ -97,7 +97,7 @@ impl Command {
     pub fn reschedule(&mut self) {
         if !self.one_shot {
             let now = Utc::now();
-            self.release_time = now + self.interval_secs;
+            self.release_time = now + self.interval_millis;
             self.absolute_deadline = self.release_time + self.relative_deadline;
         }
     }

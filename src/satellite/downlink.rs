@@ -103,7 +103,7 @@ impl Downlink {
                                 BasicPublishOptions::default(),
                                 msg,
                                 BasicProperties::default()
-                                    .with_timestamp(Utc::now().timestamp() as u64),
+                                    .with_timestamp(Utc::now().timestamp_millis() as u64),
                             ).await {
                                 warn!("Can't send data further: connection is closed, closing channel...");
                                 break; // exit sending early
