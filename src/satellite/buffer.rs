@@ -1,21 +1,19 @@
-use std::collections::BinaryHeap;
+use min_max_heap::MinMaxHeap;
 use crate::satellite::sensor::SensorData;
 use tokio::sync::Mutex;
-use std::time::Instant;
 use chrono::{DateTime, Utc};
+use log::{info, warn};
 
-pub struct PrioritizedBuffer {
+pub struct SensorPrioritizedBuffer {
     capacity: usize,
-    heap: Mutex<BinaryHeap<SensorData>>,
-    dropped_samples: Mutex<Vec<(Instant,SensorData)>>,
+    heap: Mutex<MinMaxHeap<SensorData>>,
 }
 
-impl PrioritizedBuffer {
+impl SensorPrioritizedBuffer {
     pub fn new(set_capacity: usize) -> Self {
-        PrioritizedBuffer {
+        SensorPrioritizedBuffer {
             capacity: set_capacity,
-            heap: Mutex::new(BinaryHeap::with_capacity(set_capacity)),
-            dropped_samples: Mutex::new(Vec::new()),
+            heap: Mutex::new(MinMaxHeap::with_capacity(set_capacity)),
         }
     }
 
@@ -23,37 +21,41 @@ impl PrioritizedBuffer {
         let mut heap = self.heap.lock().await;
         if heap.len() >= self.capacity {
             // Buffer full, drop lowest-priority data if new data has higher priority
-            if let Some(highest) = heap.peek(){
-                if data.priority <= highest.priority {
+            if let Some(highest) = heap.peek_min(){
+                if data <= *highest {
                     // Drop new data if its priority is lower
                     // Data loss
-                    let mut dropped = self.dropped_samples.lock().await;
-                    dropped.push((Instant::now(), data));
-                    return Err("Buffer full, low-priority data dropped".to_string());
+                    warn!("Buffer full, {:?} data loss",data.sensor_type);
+                    return Err("data loss".to_string());
                 } else {
                     // Data drop
-                    let dropped_data = heap.pop().unwrap();
-                    let mut dropped = self.dropped_samples.lock().await;
-                    dropped.push((Instant::now(), dropped_data));
+                    let dropped_data = heap.pop_min().unwrap();
+                    warn!("Buffer full, {:?} data dropped",dropped_data.sensor_type);
                 }
             }
         }
-        let data_timestamp = data.timestamp.clone();
-        let data_sensor = data.sensor_type.clone();
-        heap.push(data);
 
-        //Latency
-        let buffer_timestamp = Utc::now();
-        let latency = buffer_timestamp.signed_duration_since(data_timestamp).num_microseconds().unwrap() as f64 / 1000.0;
-        log::info!("Buffer insertion latency for {:?}: {}ms", data_sensor, latency);
+        heap.push(data);
+        //drop(heap);
+        
+    
         Ok(())
     }
 
     pub async fn pop(&self) -> Option<SensorData> {
-        self.heap.lock().await.pop()
+        self.heap.lock().await.pop_max()
     }
-
-    pub async fn get_dropped_samples(&self) -> Vec<(Instant,SensorData)> {
-        self.dropped_samples.lock().await.clone()
+    
+    pub async fn is_empty(&self) -> bool {
+        self.heap.lock().await.is_empty()
     }
+    
+    pub async fn clear(&self) {
+        self.heap.lock().await.clear();
+    }
+    
+    pub async fn len(&self) -> usize {
+        self.heap.lock().await.len()
+    }
+    
 }
