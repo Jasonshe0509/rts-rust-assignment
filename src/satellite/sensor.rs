@@ -79,7 +79,8 @@ pub struct Sensor{
 impl Sensor{
     pub fn new(sensor_type : SensorType, interval_ms : u64,
                delay_recovery: Arc<Mutex<Option<quanta::Instant>>>, corrupt_recovery: Arc<Mutex<Option<quanta::Instant>>>,
-                delay_stat: Arc<AtomicBool>, corrupt_stat: Arc<AtomicBool>, delay_inject_stat: Arc<AtomicBool>, corrupt_inject_stat: Arc<AtomicBool>) -> Sensor{
+                delay_stat: Arc<AtomicBool>, corrupt_stat: Arc<AtomicBool>, delay_inject_stat: Arc<AtomicBool>, 
+               corrupt_inject_stat: Arc<AtomicBool>) -> Sensor{
         Sensor{
             sensor_type,
             interval_ms,
@@ -130,15 +131,16 @@ impl Sensor{
     }
 
     pub fn spawn(&mut self, buffer: Arc<SensorPrioritizedBuffer>, sensor_command: Arc<Mutex<SensorCommand>>,
-                 scheduler_command: Arc<Mutex<Option<SchedulerCommand>>>) -> JoinHandle<()>{
+                 sensor_drift: Arc<Mutex<f64>>, average_insertion_latency: Arc<Mutex<f64>>, 
+                 max_insertion_latency:Arc<Mutex<f64>>, min_insertion_latency:Arc<Mutex<f64>> ) -> JoinHandle<()>{
         let interval_ms = self.interval_ms.clone();
         let sensor_type = self.sensor_type.clone();
         let delay_inject = self.delay_inject.clone();
         let corrupt_inject = self.corrupt_inject.clone();
-        let delay_recovery_time = self.delay_recovery_time.clone();
-        let corrupt_recovery_time = self.corrupt_recovery_time.clone();
-        let delay_stat = self.delayed.clone();
-        let corrupt_stat = self.corrupted.clone();
+        let drift = sensor_drift.clone();
+        let avg_latency = average_insertion_latency.clone();
+        let max_latency = max_insertion_latency.clone();
+        let min_latency = min_insertion_latency.clone();
         let handle = tokio::spawn(async move {
             let clock = Clock::new();
             let now = tokio::time::Instant::now();
@@ -147,7 +149,11 @@ impl Sensor{
             let start_time = clock.now();
             let mut expected_next_tick = start_time + Duration::from_millis(interval_ms);
             let mut missed_cycles = 0;
-           
+            let mut sensor_drift = drift.lock().await;
+            let mut avg_sensor_latency = avg_latency.lock().await;
+            let mut max_sensor_latency = max_latency.lock().await;
+            let mut min_sensor_latency = min_latency.lock().await;
+            let mut insert_count:u64 = 0;
 
             //let mut cycle_count = 0;
             loop {
@@ -156,8 +162,8 @@ impl Sensor{
                 
 
                 //drift
-                let drift = actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
-                info!("{:?} data acquisition drift: {}ms", sensor_type,drift);
+                *sensor_drift= actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
+                info!("{:?} data acquisition drift: {}ms", sensor_type,*sensor_drift);
                 expected_next_tick += Duration::from_millis(interval_ms);
 
                 //check corrupt and delay data injection
@@ -229,9 +235,16 @@ impl Sensor{
                 match buffer.push(data).await {
                     Ok(_) => {
                         info!("{:?} data pushed to buffer", sensor_type);
-                        let latency = clock.now().duration_since(actual_tick_time).as_millis() as f64;
-                        info!("Buffer insertion for {:?} data latency: {}ms", sensor_type, latency);
-                        //info!("Sensor buffer len: {}", buffer.len().await);
+                        let current_latency = clock.now().duration_since(actual_tick_time).as_millis() as f64;
+                        info!("Buffer insertion for {:?} data latency: {}ms", sensor_type, current_latency);
+                        insert_count +=1;
+                        *avg_sensor_latency = (*avg_sensor_latency + current_latency)/insert_count as f64;
+                        if current_latency > *max_sensor_latency {
+                            *max_sensor_latency = current_latency;
+                        }
+                        if current_latency < *min_sensor_latency {
+                            *min_sensor_latency = current_latency;
+                        }
                     },
                     Err(e) => {
                         match sensor_type{

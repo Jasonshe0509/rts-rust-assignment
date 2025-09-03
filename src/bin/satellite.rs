@@ -10,7 +10,7 @@ use rts_rust_assignment::satellite::command::{SchedulerCommand,SensorCommand};
 use rts_rust_assignment::satellite::FIFO_queue::FifoQueue;
 use rts_rust_assignment::satellite::downlink::Downlink;
 use rts_rust_assignment::satellite::receiver::SatelliteReceiver;
-use log::{info,warn};
+use log::{error, info, warn};
 use rts_rust_assignment::util::log_generator::LogGenerator;
 use std::sync::atomic::{AtomicBool, Ordering};
 use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
@@ -26,12 +26,13 @@ use rts_rust_assignment::satellite::config::{CONNECTION_ADDRESS,DOWNLINK_INTERVA
 #[tokio::main]
 async fn main(){
     LogGenerator::new("satellite");
-    info!("Starting Satellite System...");
+    info!("MAIN: Initializing Satellite System...");
 
     //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
     let sensor_buffer = Arc::new(SensorPrioritizedBuffer::new(SENSOR_BUFFER_SIZE));
 
+    //declare fault & recovery control variables
     let tel_delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
     let tel_corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
     let rad_delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>> = Arc::new(Mutex::new(None));
@@ -50,6 +51,21 @@ async fn main(){
     let rad_inject_corrupt = Arc::new(AtomicBool::new(false));
     let ant_inject_delay = Arc::new(AtomicBool::new(false));
     let ant_inject_corrupt = Arc::new(AtomicBool::new(false));
+
+    //declare performance metric
+    let telemetry_sensor_drift = Arc::new(Mutex::new(0.0));
+    let radiation_sensor_drift = Arc::new(Mutex::new(0.0));
+    let antenna_sensor_drift = Arc::new(Mutex::new(0.0));
+
+    let telemetry_sensor_avg_latency = Arc::new(Mutex::new(0.0));
+    let telemetry_sensor_max_latency = Arc::new(Mutex::new(0.0));
+    let telemetry_sensor_min_latency = Arc::new(Mutex::new(f64::MAX));
+    let radiation_sensor_avg_latency = Arc::new(Mutex::new(0.0));
+    let radiation_sensor_max_latency = Arc::new(Mutex::new(0.0));
+    let radiation_sensor_min_latency = Arc::new(Mutex::new(f64::MAX));
+    let antenna_sensor_avg_latency = Arc::new(Mutex::new(0.0));
+    let antenna_sensor_max_latency = Arc::new(Mutex::new(0.0));
+    let antenna_sensor_min_latency = Arc::new(Mutex::new(f64::MAX));
 
 
     //initialize sensor
@@ -105,10 +121,18 @@ async fn main(){
     
     let mut background_tasks = Vec::new();
 
+    info!("MAIN: Initializations Done, Starting Tasks...");
+
     //Background task for sensor data acquisition
-    background_tasks.push(telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone(),scheduler_command.clone()));
-    background_tasks.push(radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone(),scheduler_command.clone()));
-    background_tasks.push(antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone(),scheduler_command.clone()));
+    background_tasks.push(telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone(),
+                                                 telemetry_sensor_drift.clone(),telemetry_sensor_avg_latency.clone(),
+                                                 telemetry_sensor_max_latency.clone(),telemetry_sensor_min_latency.clone()));
+    background_tasks.push(radiation_sensor.spawn(sensor_buffer.clone(), radiation_sensor_command.clone(),
+                                                 radiation_sensor_drift.clone(),radiation_sensor_avg_latency.clone(),
+                                                radiation_sensor_max_latency.clone(),radiation_sensor_min_latency.clone()));
+    background_tasks.push(antenna_sensor.spawn(sensor_buffer.clone(), antenna_sensor_command.clone(),antenna_sensor_drift.clone(),
+                                                antenna_sensor_avg_latency.clone(),antenna_sensor_max_latency.clone(),
+                                               antenna_sensor_min_latency.clone()));
 
     //Background task for real-time scheduler schedule & execute tasks
     for schedule_handle in scheduler.schedule_task(){
@@ -149,22 +173,30 @@ async fn main(){
     background_tasks.push(antenna_sensor.corrupt_fault_injection());
 
     //Background CPU monitoring thread
+    let mut total_active_cpu = 0.0;
+    let mut total_active = 0;
+    let mut total_idle_cpu = 0.0;
+    let mut total_idle = 0;
     let is_active_clone = is_active.clone();
     let cpu_monitor_handle = tokio::spawn(async move {
         let rk = RefreshKind::new().with_processes(ProcessRefreshKind::new().with_cpu());
         let mut sys = System::new_with_specifics(rk);
         let pid = Pid::from(std::process::id() as usize);
-        let mut interval = tokio::time::interval(Duration::from_secs(1));
-        info!("System has {} CPU cores", sys.cpus().len());
+        let mut interval = tokio::time::interval(Duration::from_millis(2));
+        let cpu_num = sys.cpus().len();
         loop {
             interval.tick().await;
             sys.refresh_processes_specifics(ProcessRefreshKind::new().with_cpu());
             if let Some(process) = sys.process(pid) {
-                let cpu_usage = process.cpu_usage();
+                let cpu_usage = process.cpu_usage()/cpu_num as f32;
                 if is_active_clone.load(Ordering::SeqCst) {
                     info!("Active CPU utilization: {}%", cpu_usage);
+                    total_active_cpu += cpu_usage;
+                    total_active += 1;
                 } else {
                     info!("Idle CPU utilization: {}%", cpu_usage);
+                    total_idle_cpu += cpu_usage;
+                    total_idle += 1;
                 }
             } else {
                 warn!("Process with PID {} not found, skipping CPU measurement", pid);
@@ -176,7 +208,7 @@ async fn main(){
     //Simulation time of this program & stop all tasks & terminate connection's channel
     tokio::time::sleep(Duration::from_secs(300)).await;
     if let Err(e) = conn.close(0, "Normal shutdown").await {
-        eprintln!("Error closing connection: {:?}", e);
+        error!("Error closing connection: {:?}", e);
     }
     drop(conn);
     drop(channel);
@@ -189,4 +221,19 @@ async fn main(){
     //simulate terminate time
     tokio::time::sleep(Duration::from_secs(2)).await;
     info!("All tasks stopped");
+    info!("Reporting System Performance...");
+    info!("Average Active CPU Utilization: {}%", total_active_cpu/total_active as f32);
+    info!("Average Idle CPU Utilization: {}%", total_idle_cpu/total_idle as f32);
+    info!("Telemetry Sensor Drift: {}ms",*telemetry_sensor_drift.lock().await);
+    info!("Radiation Sensor Drift: {}ms",*radiation_sensor_drift.lock().await);
+    info!("Antenna Sensor Drift: {}ms",*antenna_sensor_drift.lock().await);
+    info!("Telemetry Sensor Average Latency: {}ms",*telemetry_sensor_avg_latency.lock().await);
+    info!("Telemetry Sensor Max Latency: {}ms",*telemetry_sensor_max_latency.lock().await);
+    info!("Telemetry Sensor Min Latency: {}ms",*telemetry_sensor_min_latency.lock().await);
+    info!("Radiation Sensor Average Latency: {}ms",*radiation_sensor_avg_latency.lock().await);
+    info!("Radiation Sensor Max Latency: {}ms",*radiation_sensor_max_latency.lock().await);
+    info!("Radiation Sensor Min Latency: {}ms",*radiation_sensor_min_latency.lock().await);
+    info!("Antenna Sensor Average Latency: {}ms",*antenna_sensor_avg_latency.lock().await);
+    info!("Antenna Sensor Max Latency: {}ms",*antenna_sensor_max_latency.lock().await);
+    info!("Antenna Sensor Min Latency: {}ms",*antenna_sensor_min_latency.lock().await);
 }
