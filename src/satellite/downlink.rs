@@ -82,9 +82,8 @@ impl Downlink {
             *expected_window_open_time.lock().await = datetime_utc;
             loop {
                 interval.tick().await;
-                let actual_start_time = clock.now();
                 
-
+                let actual_start_time = clock.now();
                 // window.store(true, Ordering::SeqCst);
                 info!("Downlink Window Opened");
 
@@ -123,8 +122,8 @@ impl Downlink {
                 //tokio::time::sleep(Duration::from_millis(30)).await; //open for 30 ms
                 // window.store(false, Ordering::SeqCst);
                 info!("Downlink Window Closed");
-                
-                system_time = SystemTime::now() + Duration::from_millis(interval_ms);
+                let actual_processed_time = clock.now().duration_since(actual_start_time).as_millis() as u64;
+                system_time = SystemTime::now() + Duration::from_millis(interval_ms-actual_processed_time);
                 datetime_utc = system_time.into();
                 *expected_window_open_time.lock().await = datetime_utc;
             }
