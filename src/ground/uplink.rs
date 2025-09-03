@@ -1,6 +1,6 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use serde::{Deserialize, Serialize};
 use crate::ground::command::CommandType;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 static PACKET_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -14,7 +14,7 @@ pub struct PacketizeData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataDetails {
     pub command_type: CommandType,
-    pub message: Option<String>
+    pub message: Option<String>,
 }
 
 impl PacketizeData {
@@ -33,15 +33,23 @@ impl DataDetails {
         match command_type {
             CommandType::EC => Ok(DataDetails {
                 command_type: CommandType::EC,
-                message: Some("Hello".to_string())
+                message: Some("Hello".to_string()),
             }),
             CommandType::PG => Ok(DataDetails {
                 command_type: CommandType::PG,
-                message: None
+                message: None,
             }),
             CommandType::SC => Ok(DataDetails {
                 command_type: CommandType::SC,
-                message: None
+                message: None,
+            }),
+            CommandType::LC(sensor) => Ok(DataDetails {
+                command_type: CommandType::LC(sensor.clone()),
+                message: None,
+            }),
+            CommandType::RR(sensor) => Ok(DataDetails {
+                command_type: CommandType::RR(sensor.clone()),
+                message: None,
             }),
             _ => Err(format!("Invalid command type: {:?}", command_type)),
         }

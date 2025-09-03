@@ -1,11 +1,13 @@
+use crate::ground::command::Command;
+use crate::ground::fault_event::FaultEvent;
 use crate::ground::ground_service::GroundService;
 use crate::ground::packet_validator::PacketValidator;
-use crate::ground::scheduler::Scheduler;
 use crate::ground::system_state::SystemState;
 use crate::satellite::downlink::{PacketizeData, TransmissionData};
 use crate::satellite::fault_message::FaultMessageData;
 use crate::satellite::sensor::SensorData;
 use crate::util::compressor::Compressor;
+use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 use lapin::options::BasicAckOptions;
 use lapin::{
@@ -17,13 +19,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
-use crate::ground::fault_event::FaultEvent;
 
 pub struct Receiver {
     validator: PacketValidator,
     channel: Channel,
     queue_name: String,
-    scheduler: Arc<Mutex<Scheduler>>,
     system_state: Arc<Mutex<SystemState>>,
     fault_event: FaultEvent,
 }
@@ -31,7 +31,6 @@ impl Receiver {
     pub fn new(
         channel: Channel,
         queue_name: &str,
-        scheduler: Arc<Mutex<Scheduler>>,
         system_state: Arc<Mutex<SystemState>>,
         fault_event: FaultEvent,
     ) -> Self {
@@ -39,14 +38,17 @@ impl Receiver {
             validator: PacketValidator::new(),
             channel,
             queue_name: queue_name.to_string(),
-            scheduler,
             system_state,
             fault_event,
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self, scheduler_command: Arc<Mutex<Option<Command>>>) {
         info!(queue = %self.queue_name, "📡 Receiver starting...");
+        self.channel
+            .queue_purge(&self.queue_name, Default::default())
+            .await
+            .expect("Failed to purge queue");
         // declare queue
         self.channel
             .queue_declare(
@@ -74,18 +76,18 @@ impl Receiver {
         // consume loop
         while let Some(delivery) = consumer.next().await {
             if let Ok(delivery) = delivery {
-                let current_time = SystemTime::now();
+                // let current_time = SystemTime::now();
+                let arrival_time = Utc::now();
                 //calculate latency
                 if let Some(timestamp) = delivery.properties.timestamp() {
-                    let sent_time = UNIX_EPOCH + Duration::from_secs(*timestamp as u64);
-                    if let Ok(latency) = current_time.duration_since(sent_time) {
-                        info!(
-                            "Latency of log packet reception: {} ms",
-                            latency.as_millis()
-                        );
-                    } else {
-                        warn!("⚠️ Message timestamp is in the future, cannot calculate latency");
-                    }
+                    let sent_timestamp = *timestamp as u64;
+                    let sent_time = DateTime::from_timestamp(sent_timestamp as i64, 0)
+                        .expect("Invalid timestamp");
+                    let latency = arrival_time.signed_duration_since(sent_time);
+                    info!(
+                        "Latency of log packet reception: {} ms",
+                        latency.num_milliseconds()
+                    );
                 }
 
                 //decoding within 3ms
@@ -116,50 +118,49 @@ impl Receiver {
                     info!("Decode took {:?} ms", elapsed.as_millis());
                 }
 
-                //calculate drift
-                let drift = Self::calculate_reception_drift(
-                    current_time,
-                    packet.expected_arrival_time.into(),
-                );
-                //check missing/delayed packets
+                // calculate drift
+                let drift =
+                    Self::calculate_reception_drift(arrival_time, packet.expected_arrival_time);
+
+                // check missing/delayed packets
                 if (sensor.is_some()) {
                     self.validator
                         .validate_packet(
                             &packet,
                             &drift,
                             &sensor.unwrap().sensor_type,
-                            &self.scheduler,
+                            scheduler_command.clone(),
                             &self.system_state,
-                            &mut self.fault_event
+                            &mut self.fault_event,
                         )
                         .await;
                 } else if (fault.is_some()) {
-                    GroundService::fault_detection(&fault.unwrap(), &self.system_state, &mut self.fault_event)
-                        .await;
+                    GroundService::fault_detection(
+                        &fault.unwrap(),
+                        &self.system_state,
+                        &mut self.fault_event,
+                    )
+                    .await;
                 }
 
                 delivery.ack(BasicAckOptions::default()).await.unwrap();
             }
         }
+        warn!("⚠️ Consumer loop ended — no more messages or consumer dropped");
     }
     pub fn calculate_reception_drift(
-        current_time: SystemTime,
-        expected_arrival_time: SystemTime,
+        current_time: DateTime<Utc>,
+        expected_arrival_time: DateTime<Utc>,
     ) -> i64 {
-        match current_time.duration_since(expected_arrival_time) {
-            Ok(drift) => {
-                let drift_ms = drift.as_millis() as i64;
-                info!("Reception drift: {} ms (late arrival)", drift_ms);
-                drift_ms
-            }
-            Err(_) => {
-                let early = expected_arrival_time
-                    .duration_since(current_time)
-                    .expect("Time went backwards");
-                let drift_ms = -(early.as_millis() as i64);
-                info!("Reception drift: {} ms (early arrival)", drift_ms);
-                drift_ms
-            }
+        if current_time >= expected_arrival_time {
+            let drift_ms = current_time.signed_duration_since(expected_arrival_time).num_milliseconds();
+            info!("Reception drift: {} ms (late arrival)", drift_ms);
+            drift_ms
+        } else {
+            let early = expected_arrival_time.signed_duration_since(current_time);
+            let drift_ms = -early.num_milliseconds();
+            info!("Reception drift: {} ms (early arrival)", drift_ms);
+            drift_ms
         }
     }
 }

@@ -49,9 +49,16 @@ impl Scheduler {
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self, schedule_command: Arc<Mutex<Option<Command>>>) {
         loop {
             let now = Utc::now();
+            let mut sched = schedule_command.lock().await;
+            if let Some(command) = sched.take() {
+                self.heap.push(command);
+                *sched = None;
+            } else {
+                drop(sched);
+            }
             if let Some(command) = self.heap.peek() {
                 if command.release_time <= now {
                     let mut command = self.heap.pop().unwrap();

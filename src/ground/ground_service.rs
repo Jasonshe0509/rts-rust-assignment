@@ -14,7 +14,7 @@ pub struct GroundService {}
 impl GroundService {
     pub async fn trigger_rerequest(
         sensor_type: &SensorType,
-        scheduler: &Arc<Mutex<Scheduler>>,
+        schedule_command: Arc<Mutex<Option<Command>>>,
         fault_event: &mut FaultEvent,
     ) {
         let fault_message_data = FaultMessageData {
@@ -31,13 +31,25 @@ impl GroundService {
             Duration::seconds(2),
         );
 
-        let mut sched = scheduler.lock().await;
-        sched.add_one_shot_command(command);
+        loop {
+            {
+                let mut command_schedule = schedule_command.lock().await;
+                if (command_schedule.is_none()) {
+                    *command_schedule = Some(command.clone());
+                    break;
+                }
+            }
+            //yield to allow other tasks to run
+            tokio::task::yield_now().await;
+        }
+
+        // let mut sched = scheduler.lock().await;
+        // sched.add_one_shot_command(command);
     }
 
     pub async fn trigger_loss_of_contact(
         sensor_type: &SensorType,
-        scheduler: &Arc<Mutex<Scheduler>>,
+        schedule_command: Arc<Mutex<Option<Command>>>,
         fault_event: &mut FaultEvent,
     ) {
         let fault_message_data = FaultMessageData {
@@ -56,9 +68,20 @@ impl GroundService {
             Duration::seconds(0),
             Duration::seconds(2),
         );
+        loop {
+            {
+                let mut command_schedule = schedule_command.lock().await;
+                if (command_schedule.is_none()) {
+                    *command_schedule = Some(command.clone());
+                    break;
+                }
+            }
+            //yield to allow other tasks to run
+            tokio::task::yield_now().await;
+        }
 
-        let mut sched = scheduler.lock().await;
-        sched.add_one_shot_command(command);
+        // let mut sched = scheduler.lock().await;
+        // sched.add_one_shot_command(command);
     }
 
     pub async fn fault_detection(

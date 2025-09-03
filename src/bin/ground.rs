@@ -1,3 +1,4 @@
+use std::ptr::null;
 use lapin::{Connection, ConnectionProperties};
 use rts_rust_assignment::ground::{
     fault_event::FaultEvent, receiver::Receiver, scheduler::Scheduler, sender::Sender,
@@ -9,6 +10,7 @@ use tokio;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, sleep, timeout};
 use tracing::{error, info};
+use rts_rust_assignment::ground::command::Command;
 
 #[tokio::main]
 async fn main() {
@@ -33,16 +35,15 @@ async fn main() {
     let fault_event = FaultEvent::new();
     let system_state = Arc::new(Mutex::new(SystemState::new()));
 
-    let scheduler = Arc::new(Mutex::new(Scheduler::new(
+    let mut scheduler = Scheduler::new(
         sender,
-        Arc::clone(&system_state),
-    )));
-    let scheduler_for_receiver = Arc::clone(&scheduler);
+        Arc::clone(&system_state));
+    
+    let schedule_command:Arc<Mutex<Option<Command>>> = Arc::new(Mutex::new(None));
 
     let mut receiver = Receiver::new(
         channel.clone(),
         "telemetry_queue",
-        scheduler_for_receiver,
         Arc::clone(&system_state),
         fault_event,
     );
@@ -53,8 +54,8 @@ async fn main() {
     // Run both tasks but stop after 5 minutes
     let result = timeout(Duration::from_secs(5 * 60), async {
         tokio::join!(
-            receiver.run(),
-            async move { scheduler.lock().await.run().await },
+            receiver.run(schedule_command.clone()),
+            scheduler.run(schedule_command.clone()),
         );
     })
     .await;

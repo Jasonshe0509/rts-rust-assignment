@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::warn;
+use crate::ground::command::Command;
 
 pub struct PacketValidator {
     expected_prefixes: Vec<&'static str>,
@@ -32,7 +33,7 @@ impl PacketValidator {
         packet: &PacketizeData,
         drift: &i64,
         sensor_type: &SensorType,
-        scheduler: &Arc<Mutex<Scheduler>>,
+        schedule_command: Arc<Mutex<Option<Command>>>,
         system_state: &Arc<Mutex<SystemState>>,
         fault_event: &mut FaultEvent,
     ) {
@@ -81,10 +82,10 @@ impl PacketValidator {
         if (*count == 3) {
             //simulate loss of contract
             *count = 0;
-            GroundService::trigger_loss_of_contact(&sensor_type, &scheduler, fault_event).await;
+            GroundService::trigger_loss_of_contact(&sensor_type, schedule_command.clone(), fault_event).await;
         } else if (trigger_rerequest) {
             // trigger re-request
-            GroundService::trigger_rerequest(&sensor_type, &scheduler, fault_event).await;
+            GroundService::trigger_rerequest(&sensor_type, schedule_command.clone(), fault_event).await;
         }
     }
 }
