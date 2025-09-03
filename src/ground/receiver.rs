@@ -76,7 +76,6 @@ impl Receiver {
         // consume loop
         while let Some(delivery) = consumer.next().await {
             if let Ok(delivery) = delivery {
-                // let current_time = SystemTime::now();
                 let arrival_time = Utc::now();
                 //calculate latency
                 if let Some(timestamp) = delivery.properties.timestamp() {
@@ -153,7 +152,9 @@ impl Receiver {
         expected_arrival_time: DateTime<Utc>,
     ) -> i64 {
         if current_time >= expected_arrival_time {
-            let drift_ms = current_time.signed_duration_since(expected_arrival_time).num_milliseconds();
+            let drift_ms = current_time
+                .signed_duration_since(expected_arrival_time)
+                .num_milliseconds();
             info!("Reception drift: {} ms (late arrival)", drift_ms);
             drift_ms
         } else {

@@ -41,6 +41,10 @@ impl SatelliteReceiver{
         let channel = self.channel.clone();
         let uplink_queue_name = self.uplink_queue_name.clone();
         let handle = tokio::spawn(async move{
+            channel
+                .queue_purge(&uplink_queue_name, Default::default())
+                .await
+                .expect("Failed to purge queue");
             channel.queue_declare(&uplink_queue_name, QueueDeclareOptions::default(), FieldTable::default()).await.expect("Failed to declare queue");
             let mut consumer = channel.basic_consume(&uplink_queue_name,
             "satellite_receiver",BasicConsumeOptions::default(), FieldTable::default()).await.expect("Failed to create a consumer");
