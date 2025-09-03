@@ -146,12 +146,15 @@ impl Task {
                             msg, now2));
                         loop{
                             let start_update_command_time = clock.now();
-                            let mut guard = scheduler_command.lock().await;
-                            if guard.is_none(){
-                                *guard = Some(SchedulerCommand::CDR(
-                                    TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone()));
-                                break;
+                            {
+                                let mut guard = scheduler_command.lock().await;
+                                if guard.is_none(){
+                                    *guard = Some(SchedulerCommand::CDR(
+                                        TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone()));
+                                    break;
+                                }
                             }
+      
                             if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
                                 error!("{:?} task failed to update schedule command for request of corrupted data recovery within 100ms", self.task.name)
                             }
@@ -205,11 +208,13 @@ impl Task {
                             msg, now2));
                         loop{
                             let start_update_command_time = clock.now();
-                            let mut guard = scheduler_command.lock().await;
-                            if guard.is_none(){
-                                *guard = Some(SchedulerCommand::CDR(
-                                    TaskType::new(TaskName::RecoverDelayedData,None,Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)),data.clone()));
-                                break;
+                            {
+                                let mut guard = scheduler_command.lock().await;
+                                if guard.is_none() {
+                                    *guard = Some(SchedulerCommand::CDR(
+                                        TaskType::new(TaskName::RecoverDelayedData, None, Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)), data.clone()));
+                                    break;
+                                }
                             }
                             if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
                                 error!("{:?} task failed to update schedule command for request of delayed data recovery within 100ms", self.task.name)

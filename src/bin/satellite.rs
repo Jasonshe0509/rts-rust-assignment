@@ -173,9 +173,9 @@ async fn main(){
     background_tasks.push(antenna_sensor.corrupt_fault_injection());
 
     //Background CPU monitoring thread
-    let mut total_active_cpu = 0.0;
+    let mut total_active_cpu:f64 = 0.0;
     let mut total_active = 0;
-    let mut total_idle_cpu = 0.0;
+    let mut total_idle_cpu:f64 = 0.0;
     let mut total_idle = 0;
     let is_active_clone = is_active.clone();
     let cpu_monitor_handle = tokio::spawn(async move {
@@ -188,7 +188,7 @@ async fn main(){
             interval.tick().await;
             sys.refresh_processes_specifics(ProcessRefreshKind::new().with_cpu());
             if let Some(process) = sys.process(pid) {
-                let cpu_usage = process.cpu_usage()/cpu_num as f32;
+                let cpu_usage:f64 = process.cpu_usage() as f64/cpu_num as f64;
                 if is_active_clone.load(Ordering::SeqCst) {
                     info!("Active CPU utilization: {}%", cpu_usage);
                     total_active_cpu += cpu_usage;
@@ -222,8 +222,8 @@ async fn main(){
     tokio::time::sleep(Duration::from_secs(2)).await;
     info!("All tasks stopped");
     info!("Reporting System Performance...");
-    info!("Average Active CPU Utilization: {}%", total_active_cpu/total_active as f32);
-    info!("Average Idle CPU Utilization: {}%", total_idle_cpu/total_idle as f32);
+    info!("Average Active CPU Utilization: {}%", total_active_cpu/total_active as f64);
+    info!("Average Idle CPU Utilization: {}%", total_idle_cpu/total_idle as f64);
     info!("Telemetry Sensor Drift: {}ms",*telemetry_sensor_drift.lock().await);
     info!("Radiation Sensor Drift: {}ms",*radiation_sensor_drift.lock().await);
     info!("Antenna Sensor Drift: {}ms",*antenna_sensor_drift.lock().await);

@@ -76,27 +76,29 @@ impl SatelliteReceiver{
                         CommandType::RR(sensor_type) => {
                             loop{
                                 let start_update_command_time = clock.now();
-                                let mut guard = scheduler_command.lock().await;
-                                if guard.is_none(){
-                                    match sensor_type{
-                                        SensorType::OnboardTelemetrySensor => {
-                                            *guard = Some(SchedulerCommand::RHM(
-                                                TaskType::new(TaskName::HealthMonitoring(false),
-                                                              None,Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), false));
-                                        },
-                                        SensorType::RadiationSensor => {
-                                            *guard = Some(SchedulerCommand::RRM(
-                                                TaskType::new(TaskName::HealthMonitoring(false),
-                                                              None,Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), false));
-                                        },
-                                        SensorType::AntennaPointingSensor => {
-                                            *guard = Some(SchedulerCommand::RAA(
-                                                TaskType::new(TaskName::HealthMonitoring(false),
-                                                              None,Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), false));
+                                {
+                                    let mut guard = scheduler_command.lock().await;
+                                    if guard.is_none() {
+                                        match sensor_type {
+                                            SensorType::OnboardTelemetrySensor => {
+                                                *guard = Some(SchedulerCommand::RHM(
+                                                    TaskType::new(TaskName::HealthMonitoring(false),
+                                                                  None, Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), false));
+                                            },
+                                            SensorType::RadiationSensor => {
+                                                *guard = Some(SchedulerCommand::RRM(
+                                                    TaskType::new(TaskName::HealthMonitoring(false),
+                                                                  None, Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), false));
+                                            },
+                                            SensorType::AntennaPointingSensor => {
+                                                *guard = Some(SchedulerCommand::RAA(
+                                                    TaskType::new(TaskName::HealthMonitoring(false),
+                                                                  None, Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), false));
+                                            }
                                         }
+                                        info!("Satellite Respond to Ground's Command 'RR': Command sent to scheduler");
+                                        break;
                                     }
-                                    info!("Satellite Respond to Ground's Command 'RR': Command sent to scheduler");
-                                    break;
                                 }
                                 if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
                                     error!("Satellite Failed Respond to Ground's Command 'RR {:?}': within 100ms",sensor_type)
@@ -108,27 +110,29 @@ impl SatelliteReceiver{
                         CommandType::LC(sensor_type) => {
                             loop{
                                 let start_update_command_time = clock.now();
-                                let mut guard = scheduler_command.lock().await;
-                                if guard.is_none(){
-                                    match sensor_type{
-                                        SensorType::OnboardTelemetrySensor => {
-                                            *guard = Some(SchedulerCommand::RHM(
-                                                TaskType::new(TaskName::HealthMonitoring(true),
-                                                              None,Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), true));
-                                        },
-                                        SensorType::RadiationSensor => {
-                                            *guard = Some(SchedulerCommand::RRM(
-                                                TaskType::new(TaskName::HealthMonitoring(true),
-                                                              None,Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), false));
-                                        },
-                                        SensorType::AntennaPointingSensor => {
-                                            *guard = Some(SchedulerCommand::RAA(
-                                                TaskType::new(TaskName::HealthMonitoring(true),
-                                                              None,Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), true));
+                                {
+                                    let mut guard = scheduler_command.lock().await;
+                                    if guard.is_none() {
+                                        match sensor_type {
+                                            SensorType::OnboardTelemetrySensor => {
+                                                *guard = Some(SchedulerCommand::RHM(
+                                                    TaskType::new(TaskName::HealthMonitoring(true),
+                                                                  None, Duration::from_millis(config::HEALTH_MONITORING_TASK_DURATION)), true));
+                                            },
+                                            SensorType::RadiationSensor => {
+                                                *guard = Some(SchedulerCommand::RRM(
+                                                    TaskType::new(TaskName::HealthMonitoring(true),
+                                                                  None, Duration::from_millis(config::SPACE_WEATHER_MONITORING_TASK_DURATION)), false));
+                                            },
+                                            SensorType::AntennaPointingSensor => {
+                                                *guard = Some(SchedulerCommand::RAA(
+                                                    TaskType::new(TaskName::HealthMonitoring(true),
+                                                                  None, Duration::from_millis(config::ANTENNA_MONITORING_TASK_DURATION)), true));
+                                            }
                                         }
+                                        info!("Satellite Respond to Ground's Command 'RR': Command sent to scheduler");
+                                        break;
                                     }
-                                    info!("Satellite Respond to Ground's Command 'RR': Command sent to scheduler");
-                                    break;
                                 }
                                 if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
                                     error!("Satellite Failed Respond to Ground's Command 'LC {:?}': within 100ms",sensor_type)

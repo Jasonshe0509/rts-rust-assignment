@@ -48,7 +48,7 @@ pub struct Downlink{
     transmission_queue: Arc<FifoQueue<Vec<u8>>>,
     channel: Channel,
     downlink_queue_name: String,
-    window: Arc<AtomicBool>,
+    // window: Arc<AtomicBool>,
     expected_window_open_time: Arc<Mutex<DateTime<Utc>>>,
 }
 
@@ -59,7 +59,7 @@ impl Downlink {
             transmission_queue: transmit_queue,
             channel: downlink_channel,
             downlink_queue_name: queue_name,
-            window: Arc::new(AtomicBool::new(false)),
+            // window: Arc::new(AtomicBool::new(false)),
             expected_window_open_time: Arc::new(Mutex::new(DateTime::from(Utc::now()))),
         }
     }
@@ -67,7 +67,7 @@ impl Downlink {
     pub fn downlink_data(&self, interval_ms: u64) -> JoinHandle<()> {
         let expected_window_open_time = self.expected_window_open_time.clone();
         let transmission_queue = self.transmission_queue.clone();
-        let window = self.window.clone();
+        // let window = self.window.clone();
         let downlink_queue_name = self.downlink_queue_name.clone();
         let channel = self.channel.clone();
         let handle = tokio::spawn(async move {
@@ -85,7 +85,7 @@ impl Downlink {
                 let actual_start_time = clock.now();
                 
 
-                window.store(true, Ordering::SeqCst);
+                // window.store(true, Ordering::SeqCst);
                 info!("Downlink Window Opened");
 
                 let initialize_delay = actual_start_time.duration_since(expected_next_tick).as_millis() as f64;
@@ -100,32 +100,28 @@ impl Downlink {
                 while Instant::now() < send_until {
                     if let Some(packet) = transmission_queue.pop().await {
                         let msg = packet.as_slice();
-                        if let Err(e) = channel
-                            .basic_publish(
+                        if let Err(e) = channel.basic_publish(
                                 "",
                                 &downlink_queue_name,
                                 BasicPublishOptions::default(),
                                 msg,
                                 BasicProperties::default()
                                     .with_timestamp(Utc::now().timestamp() as u64),
-                            )
-                            .await
-                        {
-                            warn!(
-                            "Can't send data further: connection is closed, closing channel..."
-                        );
-                            break; // exit sending early
-                        } else {
-                            info!("Packet sent");
-                        }
-                    } else {
-                        // queue empty → yield briefly before retrying
-                        tokio::task::yield_now().await;
-                    }
+                            ).await {
+                                warn!("Can't send data further: connection is closed, closing channel...");
+                                break; // exit sending early
+                            } else {
+                                info!("Packet sent");
+                            }
+                    } 
+                    // else {
+                    //     // queue empty → yield briefly before retrying
+                    //     tokio::task::yield_now().await;
+                    // }
                 }
                 
-                tokio::time::sleep(Duration::from_millis(30)).await; //open for 30 ms
-                window.store(false, Ordering::SeqCst);
+                //tokio::time::sleep(Duration::from_millis(30)).await; //open for 30 ms
+                // window.store(false, Ordering::SeqCst);
                 info!("Downlink Window Closed");
                 
                 system_time = SystemTime::now() + Duration::from_millis(interval_ms);
@@ -176,8 +172,8 @@ impl Downlink {
                     let compress_sensor_data = Compressor::compress(data);
 
                     let expected_arrival_time = expected_window_open_time.lock().await.clone();
-
-                    let packet = PacketizeData::new(id, expected_arrival_time,
+                    
+                    let packet = PacketizeData::new(id.clone(), expected_arrival_time,
                                                     compress_sensor_data.len() as f64, compress_sensor_data);
 
                     let compress_packet = bincode::serialize(&packet).unwrap();
@@ -191,7 +187,7 @@ impl Downlink {
 
                     //transmission queue latency**********************
                     let latency = clock.now().duration_since(before_queue).as_millis() as f64;
-                    info!("Packet insert to transmission queue latency: {}ms",latency);
+                    info!("Packet {} insert to transmission queue latency: {}ms",id, latency);
 
                     //buffer fill rate*********
                     let buffer_len = downlink_buffer.len().await;
