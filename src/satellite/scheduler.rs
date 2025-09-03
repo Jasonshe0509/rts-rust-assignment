@@ -51,7 +51,7 @@ impl Scheduler {
                                 release_time: now,
                                 deadline: now + Duration::from_millis(process_time),
                                 data: None,
-                                priority: 5,
+                                priority: 4,
                             };
                             task_queue.lock().await.push(new_task);
                             info!("Preempted {:?} Task", task_name);
@@ -82,10 +82,7 @@ impl Scheduler {
                                 deadline: now + Duration::from_millis(process_time),
                                 data: None,
                                 priority: 6,
-                                // match urgent {
-                                //     true => 3,
-                                //     false => 5,
-                                // },
+                          
                             };
                             task_queue.lock().await.push(new_task);
                             info!("Preempted Re-request {:?} Task", task_name);
