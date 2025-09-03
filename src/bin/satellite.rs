@@ -198,7 +198,7 @@ async fn main(){
                     total_idle_cpu += cpu_usage;
                     total_idle += 1;
                 }
-            } else { 
+            } else {
                 warn!("Process with PID {} not found, skipping CPU measurement", pid);
             }
         }
@@ -214,6 +214,7 @@ async fn main(){
     drop(channel);
     
     info!("System is terminating tasks...");
+    is_active.store(false, Ordering::SeqCst);
     //stop all tasks
     for background_task in background_tasks {
         background_task.abort();

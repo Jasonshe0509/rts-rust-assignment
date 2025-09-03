@@ -108,8 +108,8 @@ impl SatelliteReceiver{
                                         }
                                     }
                                 }
-                                if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
-                                    warn!("Satellite Failed Respond to Ground's Command 'RR {:?}': within 100ms",sensor_type);
+                                if clock.now().duration_since(start_update_command_time) > Duration::from_secs(3) {
+                                    warn!("Satellite Failed Respond to Ground's Command 'RR {:?}': within 3s",sensor_type);
                                 }
                                 // yield to allow other tasks to run
                                 tokio::task::yield_now().await;
@@ -144,8 +144,8 @@ impl SatelliteReceiver{
                                         }
                                     }
                                 }
-                                if clock.now().duration_since(start_update_command_time) > Duration::from_millis(100) {
-                                    warn!("Satellite Failed Respond to Ground's Command 'LC {:?}': within 100ms",sensor_type);
+                                if clock.now().duration_since(start_update_command_time) > Duration::from_secs(3) {
+                                    warn!("Satellite Failed Respond to Ground's Command 'LC {:?}': within 3s",sensor_type);
                                 }
                                 // yield to allow other tasks to run
                                 tokio::task::yield_now().await;
