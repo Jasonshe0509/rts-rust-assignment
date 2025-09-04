@@ -225,6 +225,7 @@ impl Sensor{
             let mut avg_sensor_latency = avg_latency.lock().await;
             let mut max_sensor_latency = max_latency.lock().await;
             let mut min_sensor_latency = min_latency.lock().await;
+            let mut total_latency = 0.0;
             let mut insert_count:u64 = 0;
 
             //let mut cycle_count = 0;
@@ -311,7 +312,8 @@ impl Sensor{
                         info!("{:?}\t: Data Acquisition Done. Scheduling Drift: {}ms. Sensor Buffer Insertion Latency: {}ms.", sensor_type, sensor_drift,current_latency);
                         //info!("Buffer insertion for {:?} data latency: {}ms", sensor_type, current_latency);
                         insert_count +=1;
-                        *avg_sensor_latency = (*avg_sensor_latency + current_latency)/insert_count as f64;
+                        total_latency += current_latency;
+                        *avg_sensor_latency = total_latency/insert_count as f64;
                         if current_latency > *max_sensor_latency {
                             *max_sensor_latency = current_latency;
                         }
