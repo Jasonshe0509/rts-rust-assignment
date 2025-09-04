@@ -47,4 +47,68 @@ impl FaultEvent {
         let resolve_id = format!("CM{}", id_num);
         self.fault_resolve.insert(resolve_id, resolve_data);
     }
+
+    pub fn report(&self) {
+        let total_faults: usize = self
+            .satellite_fault
+            .values()
+            .map(|q| q.len())
+            .sum::<usize>()
+            + self.fault_resolve.len();
+
+        println!("Total faults detected : {}", total_faults);
+        println!("Total faults recovered: {}", self.fault_resolve.len());
+        println!("---------------------------------");
+
+        // Group recovery times by situation
+        let mut recovery_map: HashMap<FaultSituation, Vec<u64>> = HashMap::new();
+
+        for resolve in self.fault_resolve.values() {
+            recovery_map
+                .entry(resolve.situation.clone())
+                .or_default()
+                .push(resolve.recovery_time);
+        }
+
+        // Helper function
+        fn stats(times: &[u64]) -> Option<(u64, u64, f64)> {
+            if times.is_empty() {
+                None
+            } else {
+                let min = *times.iter().min().unwrap();
+                let max = *times.iter().max().unwrap();
+                let avg = times.iter().sum::<u64>() as f64 / times.len() as f64;
+                Some((min, max, avg))
+            }
+        }
+
+        // Print per-situation stats
+        for (situation, times) in &recovery_map {
+            if let Some((min, max, avg)) = stats(times) {
+                match situation {
+                    FaultSituation::DelayedData(sensor) | FaultSituation::CorruptedData(sensor) => {
+                        println!(
+                            "[Satellite Fault Issue: {:?}] → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
+                            situation,
+                            times.len(),
+                            min,
+                            max,
+                            avg
+                        );
+                    }
+                    FaultSituation::ReRequest(sensor) | FaultSituation::LossOfContact(sensor) => {
+                        println!(
+                            "[Missing/Delay Detected Issue from Ground: {:?}] → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
+                            situation,
+                            times.len(),
+                            min,
+                            max,
+                            avg
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
 }

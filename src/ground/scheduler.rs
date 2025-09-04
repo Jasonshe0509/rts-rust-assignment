@@ -1,10 +1,12 @@
 use crate::ground::command::{Command, CommandType};
+use crate::ground::deadline_metrics::DeadlineMetrics;
+use crate::ground::jitter_metrics::JitterMetrics;
 use crate::ground::sender::Sender;
 use crate::ground::system_state::SystemState;
 use crate::ground::uplink::{DataDetails, PacketizeData};
 use crate::util::compressor::Compressor;
 use chrono::{Duration as ChronoDuration, Utc};
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashMap};
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use tokio::sync::{Mutex, Notify};
@@ -16,10 +18,21 @@ pub struct Scheduler {
     sender: Sender,
     system_state: Arc<Mutex<SystemState>>,
     notify: Arc<Notify>,
+    total_uplink_commands: Arc<Mutex<usize>>,
+    deadline_metrics: Arc<Mutex<HashMap<CommandType, DeadlineMetrics>>>,
+    jitter_metrics: Arc<Mutex<HashMap<CommandType, JitterMetrics>>>,
+    last_latencies: Arc<Mutex<HashMap<CommandType, i64>>>,
 }
 
 impl Scheduler {
-    pub fn new(sender: Sender, system_state: Arc<Mutex<SystemState>>, notify: Arc<Notify>) -> Self {
+    pub fn new(
+        sender: Sender,
+        system_state: Arc<Mutex<SystemState>>,
+        notify: Arc<Notify>,
+        total_uplink_commands: Arc<Mutex<usize>>,
+        deadline_metrics: Arc<Mutex<HashMap<CommandType, DeadlineMetrics>>>,
+        jitter_metrics: Arc<Mutex<HashMap<CommandType, JitterMetrics>>>,
+    ) -> Self {
         let mut heap = BinaryHeap::new();
 
         // default commands
@@ -46,6 +59,10 @@ impl Scheduler {
             sender,
             system_state,
             notify,
+            total_uplink_commands,
+            deadline_metrics,
+            jitter_metrics,
+            last_latencies: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -68,7 +85,10 @@ impl Scheduler {
             if let Some(command) = self.heap.peek() {
                 if command.release_time <= now {
                     let mut command = self.heap.pop().unwrap();
-                    info!("Command: {:?} has been released for execution", command.command_type);
+                    info!(
+                        "Command: {:?} has been released for execution",
+                        command.command_type
+                    );
 
                     // urgent commands (≤2ms dispatch)
                     let dispatch_latency = now
@@ -95,7 +115,27 @@ impl Scheduler {
                         );
                     }
 
-                    let start = std::time::Instant::now();
+                    let mut last_latencies = self.last_latencies.lock().await;
+
+                    if let Some(prev_latency) =
+                        last_latencies.insert(command.command_type.clone(), dispatch_latency)
+                    {
+                        let jitter = (dispatch_latency - prev_latency).abs();
+
+                        info!(
+                            "Jitter for command {:?}: {} ms",
+                            command.command_type, jitter
+                        );
+
+                        // record jitter
+                        let mut jitter_metrics = self.jitter_metrics.lock().await;
+                        jitter_metrics
+                            .entry(command.command_type.clone())
+                            .or_insert_with(JitterMetrics::new)
+                            .record(jitter);
+                    }
+
+                    let start = Instant::now();
                     info!("Validating command whether safe for execute");
                     if let Err(e) = command.validate(&self.system_state).await {
                         let latency_us = start.elapsed().as_micros(); // microseconds
@@ -112,8 +152,11 @@ impl Scheduler {
                         );
                     }
 
-
-                    info!("Preparing data details for uplink: {:?}", command.command_type);
+                    let uplink_start = Instant::now();
+                    info!(
+                        "Preparing data details for uplink: {:?}",
+                        command.command_type
+                    );
                     let data_details = match DataDetails::new(&command.command_type) {
                         Ok(details) => details,
                         Err(e) => {
@@ -121,16 +164,36 @@ impl Scheduler {
                             continue;
                         }
                     };
-                    
-                    info!("Compressing the data details : {:?} for uplink: {:?}", data_details, command.command_type);
+
+                    info!(
+                        "Compressing the data details : {:?} for uplink: {:?}",
+                        data_details, command.command_type
+                    );
                     let data = Compressor::compress(data_details);
-                    info!("Preparing packet data for uplink: {:?}", command.command_type);
+                    info!(
+                        "Preparing packet data for uplink: {:?}",
+                        command.command_type
+                    );
                     let packet_data = PacketizeData::new(data.len() as f64, data);
-                    info!("Data has been packed with id {}, ready for serialization", packet_data.packet_id);
+                    info!(
+                        "Data has been packed with id {}, ready for serialization",
+                        packet_data.packet_id
+                    );
                     let packet = bincode::serialize(&packet_data).unwrap();
-                    info!("Packet {} has been serialize , ready for uplink: {:?}", packet_data.packet_id, command.command_type);
-                    self.sender.send_command(&packet, &packet_data.packet_id).await;
-                    
+                    info!(
+                        "Packet {} has been serialize , ready for uplink: {:?}",
+                        packet_data.packet_id, command.command_type
+                    );
+                    self.sender
+                        .send_command(&packet, &packet_data.packet_id)
+                        .await;
+
+                    let uplink_latency = uplink_start.elapsed().as_millis();
+
+                    info!(
+                        "Packet {} uplink completed (latency: {} ms)",
+                        packet_data.packet_id, uplink_latency
+                    );
 
                     match &command.command_type {
                         CommandType::LC(sensor) => {
@@ -139,7 +202,13 @@ impl Scheduler {
                         }
                         _ => {}
                     }
+                    {
+                        let mut total = self.total_uplink_commands.lock().await;
+                        *total += 1;
+                    }
+
                     let complete_time = Utc::now();
+                    let mut metrics = self.deadline_metrics.lock().await;
                     if complete_time > command.absolute_deadline {
                         let miss = complete_time
                             .signed_duration_since(command.absolute_deadline)
@@ -148,6 +217,10 @@ impl Scheduler {
                             "Command {:?} exceeded its deadline by {} ms",
                             command.command_type, miss
                         );
+                        metrics
+                            .entry(command.command_type.clone())
+                            .or_default()
+                            .record(miss, false);
                     } else {
                         let early = command
                             .absolute_deadline
@@ -157,6 +230,10 @@ impl Scheduler {
                             "Command {:?} completed {} ms before its deadline",
                             command.command_type, early
                         );
+                        metrics
+                            .entry(command.command_type.clone())
+                            .or_default()
+                            .record(early, true);
                     }
 
                     if !command.one_shot {

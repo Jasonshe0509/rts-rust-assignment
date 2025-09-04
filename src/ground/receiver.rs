@@ -7,6 +7,7 @@ use crate::satellite::downlink::{PacketizeData, TransmissionData};
 use crate::satellite::fault_message::FaultMessageData;
 use crate::satellite::sensor::SensorData;
 use crate::util::compressor::Compressor;
+use crate::util::trigger_tracker::TriggerTracker;
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 use lapin::options::BasicAckOptions;
@@ -16,29 +17,27 @@ use lapin::{
     types::FieldTable,
 };
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Notify};
 use tracing::{error, info, warn};
-use crate::util::trigger_tracker::TriggerTracker;
 
 pub struct Receiver {
     validator: PacketValidator,
     channel: Channel,
     queue_name: String,
     system_state: Arc<Mutex<SystemState>>,
-    fault_event: FaultEvent,
+    fault_event: Arc<Mutex<FaultEvent>>,
     tracker: TriggerTracker,
     notify: Arc<Notify>,
-    
 }
 impl Receiver {
     pub fn new(
         channel: Channel,
         queue_name: &str,
         system_state: Arc<Mutex<SystemState>>,
-        fault_event: FaultEvent,
+        fault_event: Arc<Mutex<FaultEvent>>,
         tracker: TriggerTracker,
-        notify: Arc<Notify>
+        notify: Arc<Notify>,
     ) -> Self {
         Self {
             validator: PacketValidator::new(),
@@ -47,7 +46,7 @@ impl Receiver {
             system_state,
             fault_event,
             tracker,
-            notify
+            notify,
         }
     }
 
@@ -81,9 +80,21 @@ impl Receiver {
             .expect("Failed to start consumer");
         info!("Consumer for queue: {} has started", self.queue_name);
 
+        let mut last_check = Instant::now();
+        let check_interval = Duration::from_secs(30);
         // consume loop
         while let Some(delivery) = consumer.next().await {
             if let Ok(delivery) = delivery {
+                //track queue number
+                if last_check.elapsed() >= check_interval {
+                    if let Ok((msg_count, cons_count)) = self.get_queue_info().await {
+                        info!(
+                            "Queue '{}': {} messages, {} consumers",
+                            self.queue_name, msg_count, cons_count
+                        );
+                    }
+                    last_check = Instant::now();
+                }
                 //calculate latency
                 let arrival_time = Utc::now();
                 if let Some(timestamp) = delivery.properties.timestamp() {
@@ -168,12 +179,14 @@ impl Receiver {
                             &sensor_data.sensor_type,
                             scheduler_command.clone(),
                             &self.system_state,
-                            &mut self.fault_event,
+                            &self.fault_event,
                             &self.tracker,
-                            &self.notify
+                            &self.notify,
                         )
                         .await;
-                    let duration = Utc::now().signed_duration_since(start_time).num_milliseconds();
+                    let duration = Utc::now()
+                        .signed_duration_since(start_time)
+                        .num_milliseconds();
                     info!(
                         "Validation for sensor packet {:?} trigger completed in {} ms",
                         packet.packet_id, duration
@@ -187,15 +200,18 @@ impl Receiver {
                     GroundService::fault_detection(
                         &fault_data,
                         &self.system_state,
-                        &mut self.fault_event,
+                        &self.fault_event,
                     )
                     .await;
-                    let duration = Utc::now().signed_duration_since(start_time).num_milliseconds();
+                    let duration = Utc::now()
+                        .signed_duration_since(start_time)
+                        .num_milliseconds();
                     info!(
                         "Detecting fault packet {:?} trigger completed in {} ms",
                         packet.packet_id, duration
                     );
                 }
+                info!("Complete handling the packet {}", packet.packet_id);
 
                 delivery.ack(BasicAckOptions::default()).await.unwrap();
             }
@@ -229,5 +245,24 @@ impl Receiver {
             );
             drift_ms
         }
+    }
+
+    async fn get_queue_info(&self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
+        let queue_info = self
+            .channel
+            .queue_declare(
+                &self.queue_name,
+                QueueDeclareOptions {
+                    passive: true, // Only check, don't create
+                    ..Default::default()
+                },
+                FieldTable::default(),
+            )
+            .await?;
+
+        let message_count = queue_info.message_count();
+        let consumer_count = queue_info.consumer_count();
+
+        Ok((message_count, consumer_count))
     }
 }

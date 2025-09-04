@@ -36,7 +36,7 @@ impl PacketValidator {
         sensor_type: &SensorType,
         schedule_command: Arc<Mutex<Option<Command>>>,
         system_state: &Arc<Mutex<SystemState>>,
-        fault_event: &mut FaultEvent,
+        fault_event: &Arc<Mutex<FaultEvent>>,
         tracker: &TriggerTracker,
         notify: &Arc<Notify>,
     ) {

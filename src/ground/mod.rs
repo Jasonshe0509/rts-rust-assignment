@@ -7,3 +7,6 @@ pub mod uplink;
 mod ground_service;
 pub mod system_state;
 pub mod fault_event;
+pub mod program_utilization;
+pub mod deadline_metrics;
+pub mod jitter_metrics;
