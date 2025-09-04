@@ -26,7 +26,7 @@ use rts_rust_assignment::satellite::config::{CONNECTION_ADDRESS,DOWNLINK_INTERVA
 #[tokio::main]
 async fn main(){
     LogGenerator::new("satellite");
-    info!("MAIN: Initializing Satellite System...");
+    info!("MAIN\t: Initializing Satellite System...");
 
     //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     //initialize buffer for sensor
@@ -67,6 +67,43 @@ async fn main(){
     let antenna_sensor_max_latency = Arc::new(Mutex::new(0.0));
     let antenna_sensor_min_latency = Arc::new(Mutex::new(f64::MAX));
 
+    let tel_task_drift = Arc::new(Mutex::new(0.0));
+    let tel_task_total_start_delay = Arc::new(Mutex::new(0.0));
+    let tel_task_max_start_delay = Arc::new(Mutex::new(0.0));
+    let tel_task_min_start_delay = Arc::new(Mutex::new(f64::MAX));
+    let tel_task_total_end_delay = Arc::new(Mutex::new(0.0));
+    let tel_task_max_end_delay = Arc::new(Mutex::new(0.0));
+    let tel_task_min_end_delay = Arc::new(Mutex::new(f64::MAX));
+    let tel_task_count = Arc::new(Mutex::new(0.0));
+
+    let rad_task_drift = Arc::new(Mutex::new(0.0));
+    let rad_task_total_start_delay = Arc::new(Mutex::new(0.0));
+    let rad_task_max_start_delay = Arc::new(Mutex::new(0.0));
+    let rad_task_min_start_delay = Arc::new(Mutex::new(f64::MAX));
+    let rad_task_total_end_delay = Arc::new(Mutex::new(0.0));
+    let rad_task_max_end_delay = Arc::new(Mutex::new(0.0));
+    let rad_task_min_end_delay = Arc::new(Mutex::new(f64::MAX));
+    let rad_task_count = Arc::new(Mutex::new(0.0));
+
+    let ant_task_drift = Arc::new(Mutex::new(0.0));
+    let ant_task_total_start_delay = Arc::new(Mutex::new(0.0));
+    let ant_task_max_start_delay = Arc::new(Mutex::new(0.0));
+    let ant_task_min_start_delay = Arc::new(Mutex::new(f64::MAX));
+    let ant_task_total_end_delay = Arc::new(Mutex::new(0.0));
+    let ant_task_max_end_delay = Arc::new(Mutex::new(0.0));
+    let ant_task_min_end_delay = Arc::new(Mutex::new(f64::MAX));
+    let ant_task_count = Arc::new(Mutex::new(0.0));
+
+    let downlink_buffer_total_latency = Arc::new(Mutex::new(0.0));
+    let downlink_buffer_max_latency = Arc::new(Mutex::new(0.0));
+    let downlink_buffer_min_latency = Arc::new(Mutex::new(f64::MAX));
+    let downlink_buffer_count = Arc::new(Mutex::new(0.0));
+
+    let downlink_queue_total_latency = Arc::new(Mutex::new(0.0));
+    let downlink_queue_max_latency = Arc::new(Mutex::new(0.0));
+    let downlink_queue_min_latency = Arc::new(Mutex::new(f64::MAX));
+    let downlink_queue_count = Arc::new(Mutex::new(0.0));
+
 
     //initialize sensor
     let mut telemetry_sensor = Sensor::new(SensorType::OnboardTelemetrySensor,
@@ -106,10 +143,10 @@ async fn main(){
     
     //initialize communication channel
     let conn = Connection::connect(CONNECTION_ADDRESS,ConnectionProperties::default()).await
-        .expect("Cannot connect to RabbitMQ");
+        .expect("MAIN\t: Cannot connect to RabbitMQ");
     
     let channel = conn.create_channel().await
-        .expect("Cannot create channel");
+        .expect("MAIN\t: Cannot create channel");
 
 
     //initialize downlink
@@ -121,7 +158,7 @@ async fn main(){
     
     let mut background_tasks = Vec::new();
 
-    info!("MAIN: Initializations Done, Starting Tasks...");
+    info!("MAIN\t: Initializations Done, Starting Tasks...");
 
     //Background task for sensor data acquisition
     background_tasks.push(telemetry_sensor.spawn(sensor_buffer.clone(), telemetry_sensor_command.clone(),
@@ -135,11 +172,36 @@ async fn main(){
                                                antenna_sensor_min_latency.clone()));
 
     //Background task for real-time scheduler schedule, check preemption and execute tasks
-    for schedule_handle in scheduler.schedule_task(){
+    for schedule_handle in scheduler.schedule_task(tel_task_drift.clone(),rad_task_drift.clone(),ant_task_drift.clone()){
         background_tasks.push(schedule_handle);
     }
     background_tasks.push(scheduler.check_preemption());
     let is_active_clone = is_active.clone();
+    let tel_count = tel_task_count.clone();
+    let tel_avg_start_delay = tel_task_total_start_delay.clone();
+    let tel_max_start_delay = tel_task_max_start_delay.clone();
+    let tel_min_start_delay = tel_task_min_start_delay.clone();
+    let tel_avg_end_delay = tel_task_total_end_delay.clone();
+    let tel_max_end_delay = tel_task_max_end_delay.clone();
+    let tel_min_end_delay = tel_task_min_end_delay.clone();
+    let rad_count = rad_task_count.clone();
+    let rad_avg_start_delay = rad_task_total_start_delay.clone();
+    let rad_max_start_delay = rad_task_max_start_delay.clone();
+    let rad_min_start_delay = rad_task_min_start_delay.clone();
+    let rad_avg_end_delay = rad_task_total_end_delay.clone();
+    let rad_max_end_delay = rad_task_max_end_delay.clone();
+    let rad_min_end_delay = rad_task_min_end_delay.clone();
+    let ant_count = ant_task_count.clone();
+    let ant_avg_start_delay = ant_task_total_start_delay.clone();
+    let ant_max_start_delay = ant_task_max_start_delay.clone();
+    let ant_min_start_delay = ant_task_min_start_delay.clone();
+    let ant_avg_end_delay = ant_task_total_end_delay.clone();
+    let ant_max_end_delay = ant_task_max_end_delay.clone();
+    let ant_min_end_delay = ant_task_min_end_delay.clone();
+    let downlink_buf_avg_latency = downlink_buffer_total_latency.clone();
+    let downlink_buf_max_latency = downlink_buffer_max_latency.clone();
+    let downlink_buf_min_latency = downlink_buffer_min_latency.clone();
+    let downlink_buf_count = downlink_buffer_count.clone();
     background_tasks.push(tokio::spawn(async move {
         scheduler.execute_task(telemetry_sensor_command.clone(),
                                radiation_sensor_command.clone(), antenna_sensor_command.clone(),is_active_clone,
@@ -151,12 +213,20 @@ async fn main(){
                                ant_delay_status.clone(),ant_corrupt_status.clone(),
                                tel_inject_delay.clone(),tel_inject_corrupt.clone(),
                                rad_inject_delay.clone(),rad_inject_corrupt.clone(),
-                               ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
+                               ant_inject_delay.clone(),ant_inject_corrupt.clone(),
+                               tel_count,tel_avg_start_delay, tel_max_start_delay,tel_min_start_delay,
+                               tel_avg_end_delay,tel_max_end_delay, tel_min_end_delay,
+                               rad_count,rad_avg_start_delay, rad_max_start_delay,rad_min_start_delay,
+                               rad_avg_end_delay,rad_max_end_delay, rad_min_end_delay,
+                               ant_count,ant_avg_start_delay, ant_max_start_delay,ant_min_start_delay,
+                               ant_avg_end_delay,ant_max_end_delay, ant_min_end_delay,
+                               downlink_buf_avg_latency, downlink_buf_max_latency, downlink_buf_min_latency, downlink_buf_count).await;
     }));
     
 
     //Background task for downlink of window controller & process data & downlink data
-    background_tasks.push(downlink.process_data());
+    background_tasks.push(downlink.process_data(downlink_queue_total_latency.clone(),downlink_queue_max_latency.clone(),
+                                                downlink_queue_min_latency.clone(),downlink_queue_count.clone()));
     background_tasks.push(downlink.downlink_data(DOWNLINK_INTERVAL));
 
     background_tasks.push(satellite_receiver.receive_command());
@@ -172,11 +242,23 @@ async fn main(){
     background_tasks.push(radiation_sensor.corrupt_fault_injection());
     background_tasks.push(antenna_sensor.corrupt_fault_injection());
 
+    background_tasks.push(telemetry_sensor.trace_delay_fault_logging());
+    background_tasks.push(radiation_sensor.trace_delay_fault_logging());
+    background_tasks.push(antenna_sensor.trace_delay_fault_logging());
+    background_tasks.push(telemetry_sensor.trace_corrupt_fault_logging());
+    background_tasks.push(radiation_sensor.trace_corrupt_fault_logging());
+    background_tasks.push(antenna_sensor.trace_corrupt_fault_logging());
+
     //Background CPU monitoring thread
-    let mut total_active_cpu:f64 = 0.0;
-    let mut total_active = 0;
-    let mut total_idle_cpu:f64 = 0.0;
-    let mut total_idle = 0;
+    let total_active_cpu = Arc::new(Mutex::new(0.0));
+    let total_active = Arc::new(Mutex::new(0));
+    let total_idle_cpu =Arc::new(Mutex::new(0.0));
+    let total_idle = Arc::new(Mutex::new(0));
+
+    let total_active_cpu_clone = total_active_cpu.clone();
+    let total_active_clone = total_active.clone();
+    let total_idle_cpu_clone = total_idle_cpu.clone();
+    let total_idle_clone = total_idle.clone();
     let is_active_clone = is_active.clone();
     let cpu_monitor_handle = tokio::spawn(async move {
         let rk = RefreshKind::new().with_processes(ProcessRefreshKind::new().with_cpu());
@@ -190,16 +272,16 @@ async fn main(){
             if let Some(process) = sys.process(pid) {
                 let cpu_usage:f64 = process.cpu_usage() as f64/cpu_num as f64;
                 if is_active_clone.load(Ordering::SeqCst) {
-                    info!("Active CPU utilization: {}%", cpu_usage);
-                    total_active_cpu += cpu_usage;
-                    total_active += 1;
+                    info!("MAIN\t: Active CPU utilization: {}%", cpu_usage);
+                    *total_active_cpu_clone.lock().await += cpu_usage;
+                    *total_active_clone.lock().await += 1;
                 } else {
-                    info!("Idle CPU utilization: {}%", cpu_usage);
-                    total_idle_cpu += cpu_usage;
-                    total_idle += 1;
+                    info!("MAIN\t: Idle CPU utilization: {}%", cpu_usage);
+                    *total_idle_cpu_clone.lock().await += cpu_usage;
+                    *total_idle_clone.lock().await += 1;
                 }
             } else {
-                warn!("Process with PID {} not found, skipping CPU measurement", pid);
+                warn!("MAIN\t: Process with PID {} not found, skipping CPU measurement", pid);
             }
         }
     });
@@ -208,12 +290,12 @@ async fn main(){
     //Simulation time of this program & stop all tasks & terminate connection's channel
     tokio::time::sleep(Duration::from_secs(300)).await;
     if let Err(e) = conn.close(0, "Normal shutdown").await {
-        error!("Error closing connection: {:?}", e);
+        error!("MAIN\t: Error closing connection: {:?}", e);
     }
     drop(conn);
     drop(channel);
     
-    info!("System is terminating tasks...");
+    info!("MAIN\t: System is terminating tasks...");
     is_active.store(false, Ordering::SeqCst);
     //stop all tasks
     for background_task in background_tasks {
@@ -221,20 +303,80 @@ async fn main(){
     }
     //simulate terminate time
     tokio::time::sleep(Duration::from_secs(2)).await;
-    info!("All tasks stopped");
-    info!("Reporting System Performance...");
-    info!("Average Active CPU Utilization: {}%", total_active_cpu/total_active as f64);
-    info!("Average Idle CPU Utilization: {}%", total_idle_cpu/total_idle as f64);
-    info!("Telemetry Sensor Drift: {}ms",*telemetry_sensor_drift.lock().await);
-    info!("Radiation Sensor Drift: {}ms",*radiation_sensor_drift.lock().await);
-    info!("Antenna Sensor Drift: {}ms",*antenna_sensor_drift.lock().await);
-    info!("Telemetry Sensor Average Latency: {}ms",*telemetry_sensor_avg_latency.lock().await);
-    info!("Telemetry Sensor Max Latency: {}ms",*telemetry_sensor_max_latency.lock().await);
-    info!("Telemetry Sensor Min Latency: {}ms",*telemetry_sensor_min_latency.lock().await);
-    info!("Radiation Sensor Average Latency: {}ms",*radiation_sensor_avg_latency.lock().await);
-    info!("Radiation Sensor Max Latency: {}ms",*radiation_sensor_max_latency.lock().await);
-    info!("Radiation Sensor Min Latency: {}ms",*radiation_sensor_min_latency.lock().await);
-    info!("Antenna Sensor Average Latency: {}ms",*antenna_sensor_avg_latency.lock().await);
-    info!("Antenna Sensor Max Latency: {}ms",*antenna_sensor_max_latency.lock().await);
-    info!("Antenna Sensor Min Latency: {}ms",*antenna_sensor_min_latency.lock().await);
+    info!("MAIN\t: All tasks stopped");
+    info!("MAIN\t: Generating System Performance Report...");
+    info!("--------System Performance Final Report--------");
+    info!("\n");
+    info!("CPU Performance:");
+    info!("Average Active CPU Utilization\t: {}%", (*total_active_cpu.lock().await)/(*total_active.lock().await) as f64);
+    info!("Average Idle CPU Utilization\t: {}%", (*total_idle_cpu.lock().await)/(*total_idle.lock().await) as f64);
+    info!("\n");
+    info!("\n");
+    info!("Sensor Management Performance:");
+    info!("Telemetry Sensor Performance:");
+    info!("Telemetry Sensor Scheduling Drift\t: {}ms",*telemetry_sensor_drift.lock().await);
+    info!("Telemetry Sensor Average Latency\t: {}ms",*telemetry_sensor_avg_latency.lock().await);
+    info!("Telemetry Sensor Max Latency\t: {}ms",*telemetry_sensor_max_latency.lock().await);
+    info!("Telemetry Sensor Min Latency\t: {}ms",*telemetry_sensor_min_latency.lock().await);
+    info!("\n");
+    info!("Radiation Sensor Performance:");
+    info!("Radiation Sensor Scheduling Drift\t: {}ms",*radiation_sensor_drift.lock().await);
+    info!("Radiation Sensor Average Latency\t: {}ms",*radiation_sensor_avg_latency.lock().await);
+    info!("Radiation Sensor Max Latency\t: {}ms",*radiation_sensor_max_latency.lock().await);
+    info!("Radiation Sensor Min Latency\t: {}ms",*radiation_sensor_min_latency.lock().await);
+    info!("\n");
+    info!("Antenna Sensor Performance:");
+    info!("Antenna Sensor Scheduling Drift\t: {}ms",*antenna_sensor_drift.lock().await);
+    info!("Antenna Sensor Average Latency\t: {}ms",*antenna_sensor_avg_latency.lock().await);
+    info!("Antenna Sensor Max Latency\t: {}ms",*antenna_sensor_max_latency.lock().await);
+    info!("Antenna Sensor Min Latency\t: {}ms",*antenna_sensor_min_latency.lock().await);
+    info!("\n");
+    info!("\n");
+    info!("Task Management Performance:");
+    info!("Health Monitoring Task Performance:");
+    info!("Health Monitoring Task Scheduling Drift\t: {}ms",*tel_task_drift.lock().await);
+    info!("Health Monitoring Task Average Start Delay\t: {}ms",(*tel_task_total_start_delay.lock().await)/(*tel_task_count.lock().await));
+    info!("Health Monitoring Task Max Start Delay\t: {}ms",*tel_task_max_start_delay.lock().await);
+    info!("Health Monitoring Task Min Start Delay\t: {}ms",*tel_task_min_start_delay.lock().await);
+    info!("Health Monitoring Task Average End Delay\t: {}ms",(*tel_task_total_end_delay.lock().await)/(*tel_task_count.lock().await));
+    info!("Health Monitoring Task Max End Delay\t: {}ms",*tel_task_max_end_delay.lock().await);
+    info!("Health Monitoring Task Min End Delay\t: {}ms",*tel_task_min_end_delay.lock().await);
+    info!("\n");
+    info!("Space Weather Monitoring Task Performance:");
+    info!("Space Weather Monitoring Task Scheduling Drift\t: {}ms",*rad_task_drift.lock().await);
+    info!("Space Weather Monitoring Task Average Start Delay\t: {}ms",(*rad_task_total_start_delay.lock().await)/(*rad_task_count.lock().await));
+    info!("Space Weather Monitoring Task Max Start Delay\t: {}ms",*rad_task_max_start_delay.lock().await);
+    info!("Space Weather Monitoring Task Min Start Delay\t: {}ms",*rad_task_min_start_delay.lock().await);
+    info!("Space Weather Monitoring Task Average End Delay\t: {}ms",(*rad_task_total_end_delay.lock().await)/(*rad_task_count.lock().await));
+    info!("Space Weather Monitoring Task Max End Delay\t: {}ms",*rad_task_max_end_delay.lock().await);
+    info!("Space Weather Monitoring Task Min End Delay\t: {}ms",*rad_task_min_end_delay.lock().await);
+    info!("\n");
+    info!("Antenna Alignment Task Performance:");
+    info!("Antenna Alignment Task Scheduling Drift\t: {}ms",*ant_task_drift.lock().await);
+    info!("Antenna Alignment Task Average Start Delay\t: {}ms",(*ant_task_total_start_delay.lock().await)/(*ant_task_count.lock().await));
+    info!("Antenna Alignment Task Max Start Delay\t: {}ms",*ant_task_max_start_delay.lock().await);
+    info!("Antenna Alignment Task Min Start Delay\t: {}ms",*ant_task_min_start_delay.lock().await);
+    info!("Antenna Alignment Task Average End Delay\t: {}ms",(*ant_task_total_end_delay.lock().await)/(*ant_task_count.lock().await));
+    info!("Antenna Alignment Task Max End Delay\t: {}ms",*ant_task_max_end_delay.lock().await);
+    info!("Antenna Alignment Task Min End Delay\t: {}ms",*ant_task_min_end_delay.lock().await);
+    info!("\n");
+    info!("\n");
+    info!("Downlink Performance:");
+    info!("Downlink Buffer Average Latency\t: {}ms",(*downlink_buffer_total_latency.lock().await)/(*downlink_buffer_count.lock().await));
+    info!("Downlink Buffer Max Latency\t: {}ms",*downlink_buffer_max_latency.lock().await);
+    info!("Downlink Buffer Min Latency\t: {}ms",*downlink_buffer_min_latency.lock().await);
+    info!("Downlink Queue Average Latency\t: {}ms",(*downlink_queue_total_latency.lock().await)/(*downlink_queue_count.lock().await));
+    info!("Downlink Queue Max Latency\t: {}ms",*downlink_queue_max_latency.lock().await);
+    info!("Downlink Queue Min Latency\t: {}ms",*downlink_queue_min_latency.lock().await);
+    info!("\n");
+    info!("\n");
+    info!("Fault and Response Report:");
+    telemetry_sensor.log_faults().await;
+    info!("\n");
+    radiation_sensor.log_faults().await;
+    info!("\n");
+    antenna_sensor.log_faults().await;
+    info!("\n");
+    info!("\n");
+    info!("------------------System Terminated------------------");
 }

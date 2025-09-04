@@ -13,6 +13,7 @@ use tokio::sync::{Mutex,MutexGuard};
 use tracing::Instrument;
 use crate::satellite::buffer::SensorPrioritizedBuffer;
 use crate::satellite::config;
+use crate::satellite::downlink::TransmissionData;
 use crate::satellite::fault_message::{FaultMessageData, FaultSituation, FaultType};
 use crate::satellite::FIFO_queue::FifoQueue;
 
@@ -53,21 +54,25 @@ impl TaskType{
 
 
 impl Task {
-    pub async fn execute(&mut self, buffer: Arc<SensorPrioritizedBuffer>,
+    pub async fn execute(&mut self, sensor_buffer: Arc<SensorPrioritizedBuffer>,
+                         downlink_buffer: Arc<FifoQueue<TransmissionData>>,
                          scheduler_command: Arc<FifoQueue<SchedulerCommand>>,
                          sensor_command: Option<Arc<Mutex<SensorCommand>>>,
-                         delay_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
-                         corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
+                         delay_recovery_time: Arc<Mutex<Option<Instant>>>,
+                         corrupt_recovery_time: Arc<Mutex<Option<Instant>>>,
                          delay_stat:Arc<AtomicBool>, corrupt_stat: Arc<AtomicBool>,
-                         delay_inject:Arc<AtomicBool>, corrupt_inject:Arc<AtomicBool>) -> (Option<SensorData>, Option<FaultMessageData>) {
+                         delay_inject:Arc<AtomicBool>, corrupt_inject:Arc<AtomicBool>,
+                         task_count: Arc<Mutex<f64>>,task_avg_start_delay: Arc<Mutex<f64>>, task_max_start_delay: Arc<Mutex<f64>>, task_min_start_delay: Arc<Mutex<f64>>,
+                         task_avg_end_delay: Arc<Mutex<f64>>, task_max_end_delay: Arc<Mutex<f64>>, task_min_end_delay: Arc<Mutex<f64>>,
+                         downlink_buf_avg_latency: Arc<Mutex<f64>>, downlink_buf_max_latency: Arc<Mutex<f64>>,
+                         downlink_buf_min_latency: Arc<Mutex<f64>>, downlink_buf_count: Arc<Mutex<f64>>) {
         let clock = Clock::new();
 
         let mut fault: Option<FaultMessageData> = None;
         //Check for deadline violation
         let task_actual_start_time = clock.now();
-        if task_actual_start_time > self.release_time {
-            warn!("Start delay for task {:?}: {:?}", self.task.name, task_actual_start_time.duration_since(self.release_time));
-        }
+        let start_delay  =  task_actual_start_time.duration_since(self.release_time);
+ 
         let mut read_data_time = Duration::from_millis(0);
         let actual_read_data_time = Utc::now();
 
@@ -76,16 +81,16 @@ impl Task {
             loop {
                 read_data_time = clock.now().duration_since(task_actual_start_time);
                 if read_data_time > Duration::from_millis(20) {
-                    warn!("{:?} task terminate due to data reading time exceed. \
+                    warn!("{:?} Task\t: Terminate due to data reading time exceed. \
                         Sensor data for task not received. Priority of data adjust to be increased.", self.task.name);
                     if let Some(c) = sensor_command.clone() {
                         let mut command = c.lock().await;
                         *command = SensorCommand::IP;
                     }
-                    return (None, None);
+                    return;
                 }
 
-                match buffer.pop().await {
+                match sensor_buffer.pop().await {
                     Some(sensor_data) => {
                         match self.task.name {
                             TaskName::AntennaAlignment(rerequest,urgent) => {
@@ -130,14 +135,40 @@ impl Task {
                 TaskName::AntennaAlignment(rerequest,urgent) => {
                     let sensor_type = self.data.clone().unwrap().sensor_type;
                     if rerequest {
-                        info!("Performing re-request for {:?}",&sensor_type);
+                        info!("{:?} Task\t: Performing re-request for {:?}",self.task.name,&sensor_type);
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, match urgent{
                                 false => FaultSituation::RespondReRequest,
                                 true => FaultSituation::RespondLossOfContact
                             }(sensor_type),
                             "Space Weather Monitoring Done".to_string(), Utc::now()));
-                        return (self.data.clone(), fault);
+                        if let Some(sensor_data) = self.data.clone(){
+                            let before_push = clock.now();
+                            downlink_buffer.push(TransmissionData::Sensor(sensor_data)).await;
+                            let current_latency = clock.now().duration_since(before_push).as_millis() as f64;
+                            *downlink_buf_avg_latency.lock().await += current_latency;
+                            *downlink_buf_count.lock().await += 1.0;
+                            if current_latency > *downlink_buf_max_latency.lock().await {
+                                *downlink_buf_max_latency.lock().await = current_latency;
+                            }
+                            if current_latency < *downlink_buf_min_latency.lock().await {
+                                *downlink_buf_min_latency.lock().await = current_latency;
+                            }
+                        }
+                        if let Some(fault_data) = fault{
+                            let before_push = clock.now();
+                            downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
+                            let current_latency = clock.now().duration_since(before_push).as_millis() as f64;
+                            *downlink_buf_avg_latency.lock().await += current_latency;
+                            *downlink_buf_count.lock().await += 1.0;
+                            if current_latency > *downlink_buf_max_latency.lock().await {
+                                *downlink_buf_max_latency.lock().await = current_latency;
+                            }
+                            if current_latency < *downlink_buf_min_latency.lock().await {
+                                *downlink_buf_min_latency.lock().await = current_latency;
+                            }
+                        }
+                        return
                     }
                 }
                 _ => {}
@@ -148,7 +179,7 @@ impl Task {
                 Some(data) => {
                     if data.corrupt_status && !corrupt_stat.load(std::sync::atomic::Ordering::SeqCst) {
                         //check corrupted data
-                        let msg = format!("{:?} task start receiving corrupted {:?} data, task terminated", self.task.name, data.sensor_type).to_string();
+                        let msg = format!("{:?} Task\t: Start receiving corrupted {:?} data, task terminated", self.task.name, data.sensor_type).to_string();
                         warn!("{}",msg);
 
                         let mut corrupt_recovery = corrupt_recovery_time.lock().await;
@@ -163,24 +194,39 @@ impl Task {
                                             TaskType::new(TaskName::RecoverCorruptData,None,Duration::from_millis(config::RECOVER_CORRUPT_DATA_TASK_DURATION)),data.clone())).await;
     
                         corrupt_stat.store(true, std::sync::atomic::Ordering::SeqCst);
-                        return (None, fault);
+                        if let Some(fault_data) = fault{
+                            let before_push = clock.now();
+                            downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
+                            let current_latency = clock.now().duration_since(before_push).as_millis() as f64;
+                            *downlink_buf_avg_latency.lock().await += current_latency;
+                            *downlink_buf_count.lock().await += 1.0;
+                            if current_latency > *downlink_buf_max_latency.lock().await {
+                                *downlink_buf_max_latency.lock().await = current_latency;
+                            }
+                            if current_latency < *downlink_buf_min_latency.lock().await {
+                                *downlink_buf_min_latency.lock().await = current_latency;
+                            }
+                        }
+                        return
+           
                     } else if (!data.corrupt_status) && corrupt_stat.load(std::sync::atomic::Ordering::SeqCst) {
                         //validate recovery
-                        let msg = format!("{:?} task start receiving recovered {:?} data without corrupt."
+                        let msg = format!("{:?} Task\t: Start receiving recovered {:?} data without corrupt."
                                           , self.task.name, data.sensor_type).to_string();
                         info!("{}",msg);
                         corrupt_stat.store(false, std::sync::atomic::Ordering::SeqCst);
                         
                     } else if (!data.corrupt_status) && !corrupt_stat.load(std::sync::atomic::Ordering::SeqCst) {} 
                     else {
-                        let msg = format!("{:?} task still receiving corrupted {:?} data, task terminated", self.task.name, data.sensor_type).to_string();
+                        let msg = format!("{:?} Task\t: Still receiving corrupted {:?} data, task terminated", self.task.name, data.sensor_type).to_string();
                         warn!("{}",msg);
-                        return (None, None);
+                        return;
+                     
                     }
                 }
                 None => { 
-                    error!("{:?} task terminate due to data is None",self.task.name);
-                    return (None, None); 
+                    error!("{:?} Task\t: Terminated due to data is None",self.task.name);
+                    return;
                 }
             }
 
@@ -188,8 +234,8 @@ impl Task {
             match data {
                 Some(data) => {
                     let diff = actual_read_data_time - data.timestamp;
-                    if diff > chrono::Duration::milliseconds(500) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst){
-                        let msg = format!("{:?} task start receiving delayed {:?} data with {}ms delay, task terminated"
+                    if (diff.num_milliseconds() > 400) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst){
+                        let msg = format!("{:?} Task\t: Start receiving delayed {:?} data with {}ms delay, task terminated"
                                           , self.task.name, data.sensor_type, diff.num_milliseconds()).to_string();
                         warn!("{}",msg);
 
@@ -204,23 +250,36 @@ impl Task {
                                 TaskType::new(TaskName::RecoverDelayedData, None, Duration::from_millis(config::RECOVER_DELAYED_DATA_TASK_DURATION)), data.clone())).await;
 
                         delay_stat.store(true, std::sync::atomic::Ordering::SeqCst);
-                        return (None, fault)
-                    } else if (!(diff > chrono::Duration::milliseconds(200))) && delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
+                        if let Some(fault_data) = fault{
+                            let before_push = clock.now();
+                            downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
+                            let current_latency = clock.now().duration_since(before_push).as_millis() as f64;
+                            *downlink_buf_avg_latency.lock().await += current_latency;
+                            *downlink_buf_count.lock().await += 1.0;
+                            if current_latency > *downlink_buf_max_latency.lock().await {
+                                *downlink_buf_max_latency.lock().await = current_latency;
+                            }
+                            if current_latency < *downlink_buf_min_latency.lock().await {
+                                *downlink_buf_min_latency.lock().await = current_latency;
+                            }
+                        }
+                        return
+                    } else if (!(diff > chrono::Duration::milliseconds(400))) && delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
                         //check recovery
-                        let msg = format!("{:?} task start receiving recovered {:?} data without delay."
+                        let msg = format!("{:?} Task\t: Start receiving recovered {:?} data without delay."
                                           , self.task.name, data.sensor_type).to_string();
                         info!("{}",msg);
                         delay_stat.store(false, std::sync::atomic::Ordering::SeqCst);
                         
-                    } else if (!(diff > chrono::Duration::milliseconds(200))) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst) {} else {
-                        let msg = format!("{:?} task still receiving delayed {:?} data, task terminated", self.task.name, data.sensor_type).to_string();
+                    } else if (!(diff > chrono::Duration::milliseconds(400))) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst) {} else {
+                        let msg = format!("{:?} Task\t: Still receiving delayed {:?} data, task terminated", self.task.name, data.sensor_type).to_string();
                         warn!("{}",msg);
-                        return (None, None);
+                        return;
                     }
                 }
                 None => {
-                    error!("{:?} task terminate due to data is None",self.task.name);
-                    return (None, None);
+                    error!("{:?} Task\t: Terminated due to data is None",self.task.name);
+                    return;
                 }
             }
 
@@ -228,39 +287,38 @@ impl Task {
             match self.task.name {
                 TaskName::HealthMonitoring(rerequest,urgent) => {
                     if !data.unwrap().corrupt_status{
-                        info!("Monitoring health of satellite");
+                        info!("{:?} Task\t: Monitoring health of satellite",self.task.name);
                         match data.unwrap().data {
                             SensorPayloadDataType::TelemetryData { power, temperature, location } => {
                                 if temperature > 105.0 {
-                                    warn!("Temperature is too high, thermal control needed");
+                                    warn!("{:?} Task\t: Temperature is too high, thermal control needed",self.task.name);
                                     scheduler_command.push(SchedulerCommand::TC
                                                                (TaskType::new(TaskName::ThermalControl,None,Duration::from_millis(config::THERMAL_CONTROL_TASK_DURATION)))).await;
                                 }
                             }
                             _ => ()
                         }
-
                     }
                 },
                 TaskName::SpaceWeatherMonitoring(rerequest,urgent) => {
                     if !data.unwrap().corrupt_status {
-                        info!("Monitoring Space Weather");
-                        
-
+                        info!("{:?} Task\t: Monitoring Space Weather",self.task.name);
                     }
                 },
                 TaskName::AntennaAlignment(rerequest,urgent) => {
                     if !data.unwrap().corrupt_status {
-                        info!("Aligning Antenna");
+                        info!("{:?} Task\t: Aligning Antenna",self.task.name);
                     }
                 }
                 _ => {error!("Unknown task discovered");}
 
             }
+
+
         }else {
             match self.task.name {
                 TaskName::ThermalControl => {
-                    info!("Thermal Control reducing power usage");
+                    info!("{:?} Task\t: Thermal Control reducing power usage",self.task.name);
                 }
                 TaskName::RecoverCorruptData => {
                     let recovery_time_opt = {
@@ -271,7 +329,7 @@ impl Task {
 
                     if let Some(start_time) = recovery_time_opt {
                         corrupt_inject.store(false, std::sync::atomic::Ordering::SeqCst);
-                        buffer.clear().await;
+                        sensor_buffer.clear().await;
                         let now = Utc::now();
                         let diff = Instant::now().duration_since(start_time).as_millis() as f64;
                         {
@@ -280,10 +338,10 @@ impl Task {
                             *temp = None;
                         }
                         let sensor_type = self.data.clone().unwrap().sensor_type;
-                        let msg = format!("{:?} recovered corrupt fault. Recovery Time: {}ms", sensor_type, diff);
+                        let msg = format!("{:?} Task\t: Recovered corrupt fault for {:?}. Recovery Time: {}ms", self.task.name,sensor_type, diff);
                         info!("{}", msg);
                         if diff > 200.0 {
-                            error!("Mission Abort! due to fault of corrupted {:?} data, recovery time exceed 200ms", sensor_type);
+                            error!("{:?} Task\t: Mission Abort! due to fault of corrupted {:?} data, recovery time exceed 200ms", self.task.name,sensor_type);
                         }
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::CorruptedDataRecovered(sensor_type),
@@ -303,7 +361,7 @@ impl Task {
 
                     if let Some(start_time) = recovery_time_opt {
                         delay_inject.store(false,std::sync::atomic::Ordering::SeqCst);
-                        buffer.clear().await;
+                        sensor_buffer.clear().await;
                         let now = Utc::now();
                         let diff = Instant::now().duration_since(start_time).as_millis() as f64;
                         {
@@ -312,10 +370,10 @@ impl Task {
                             *temp = None;
                         }
                         let sensor_type = self.data.clone().unwrap().sensor_type;
-                        let msg = format!("{:?} recovered delay fault. Recovery Time: {}ms", sensor_type, diff);
+                        let msg = format!("{:?} Task\t: Recovered delay fault for {:?}. Recovery Time: {}ms", self.task.name, sensor_type, diff);
                         info!("{}", msg);
                         if diff > 200.0 {
-                            error!("Mission Abort! due to fault of delayed {:?} data, recovery time exceed 200ms", sensor_type);
+                            error!("{:?} Task\t: Mission Abort! due to fault of delayed {:?} data, recovery time exceed 200ms", self.task.name,sensor_type);
                         }
                         fault = Some(FaultMessageData::new(
                             FaultType::Fault, FaultSituation::DelayedDataRecovered(sensor_type),
@@ -333,10 +391,80 @@ impl Task {
             tokio::time::sleep(self.task.process_time - actual_processing_time).await; //simulate processing time
         }
         let task_actual_end_time = clock.now();
-        if task_actual_end_time > self.deadline {
-            warn!("Completion delay for task {:?}: {:?}", self.task.name, task_actual_end_time.duration_since(self.deadline));
+        let end_delay  =  task_actual_end_time.duration_since(self.deadline);
+
+
+        let mut current_latency = 0.0;
+        let before_push = clock.now();
+        if let Some(sensor_data) = self.data.clone(){
+            downlink_buffer.push(TransmissionData::Sensor(sensor_data)).await;
+            current_latency = clock.now().duration_since(before_push).as_millis() as f64;
+            *downlink_buf_avg_latency.lock().await += current_latency;
+            *downlink_buf_count.lock().await += 1.0;
+            if current_latency > *downlink_buf_max_latency.lock().await {
+                *downlink_buf_max_latency.lock().await = current_latency;
+            }
+            if current_latency < *downlink_buf_min_latency.lock().await {
+                *downlink_buf_min_latency.lock().await = current_latency;
+            }
         }
-        (self.data.clone(), fault)
+        if let Some(fault_data) = fault{
+            downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
+            current_latency = clock.now().duration_since(before_push).as_millis() as f64;
+            *downlink_buf_avg_latency.lock().await += current_latency;
+            *downlink_buf_count.lock().await += 1.0;
+            if current_latency > *downlink_buf_max_latency.lock().await {
+                *downlink_buf_max_latency.lock().await = current_latency;
+            }
+            if current_latency < *downlink_buf_min_latency.lock().await {
+                *downlink_buf_min_latency.lock().await = current_latency;
+            }
+        }
+       
+
+        match self.task.name {
+            TaskName::HealthMonitoring(rerequest,urgent) |
+            TaskName::SpaceWeatherMonitoring(rerequest,urgent) |
+            TaskName::AntennaAlignment(rerequest,urgent) => {
+                if !rerequest {
+                    *task_count.lock().await += 1.0;
+                    *task_avg_start_delay.lock().await += start_delay.as_millis() as f64;
+                    *task_avg_end_delay.lock().await += end_delay.as_millis() as f64;
+                    {
+                        let mut max_start_delay = task_max_start_delay.lock().await;
+                        if (start_delay.as_millis() as f64) > *max_start_delay {
+                            *max_start_delay = start_delay.as_millis() as f64;
+                        }
+                    }
+                    {
+                        let mut min_start_delay = task_min_start_delay.lock().await;
+                        if (start_delay.as_millis() as f64) < *min_start_delay {
+                            *min_start_delay = start_delay.as_millis() as f64;
+                        }
+                    }
+                    {
+                        let mut max_end_delay = task_max_end_delay.lock().await;
+                        if (end_delay.as_millis() as f64) > *max_end_delay {
+                            *max_end_delay = end_delay.as_millis() as f64;
+                        }
+                    }
+
+                    {
+                        let mut min_end_delay = task_min_end_delay.lock().await;
+                        if (end_delay.as_millis() as f64) < *min_end_delay {
+                            *min_end_delay = end_delay.as_millis() as f64;
+                        }
+                    }
+                    info!("{:?} Task\t: Task Completed. \
+                    Task Start Delay: {:?}ms. Task Completion Delay: {:?}ms. Downlink Buffer Insertion: {:?}ms ",
+                        self.task.name, start_delay,end_delay,current_latency);
+                }
+            }
+            _ => {}
+        }
+
+
+        // (self.data.clone(), fault)
     }
 }
 

@@ -10,6 +10,7 @@ use tokio::time::{interval, Duration};
 use quanta::Instant;
 use tokio::sync::Mutex;
 use quanta::Clock;
+use serde_json::to_string;
 use tokio::task::JoinHandle;
 use crate::satellite::command::{SchedulerCommand, SensorCommand};
 use crate::satellite::task::{TaskName, TaskType};
@@ -73,7 +74,8 @@ pub struct Sensor{
     pub corrupt_recovery_time: Arc<Mutex<Option<quanta::Instant>>>,
     pub delayed: Arc<AtomicBool>,
     pub corrupted: Arc<AtomicBool>,
-
+    pub delay_fault_log: Arc<Mutex<Vec<(DateTime<Utc>,DateTime<Utc>)>>>,
+    pub corrupt_fault_log: Arc<Mutex<Vec<(DateTime<Utc>,DateTime<Utc>)>>>
 }
 
 impl Sensor{
@@ -90,22 +92,92 @@ impl Sensor{
             corrupt_recovery_time: corrupt_recovery,
             delayed: delay_stat,
             corrupted: corrupt_stat,
+            delay_fault_log: Arc::new(Mutex::new(vec![])),
+            corrupt_fault_log: Arc::new(Mutex::new(vec![]))
         }
     }
 
+    pub fn trace_delay_fault_logging(&mut self) -> JoinHandle<()>{
+        let delay_recovery_time = self.delay_recovery_time.clone();
+        let fault_log = self.delay_fault_log.clone();
+        let handle = tokio::spawn(async move {
+            let mut delay_start;
+            let mut delay_end;
+            loop{
+                let start_time = {
+                    let guard = delay_recovery_time.lock().await;
+                    *guard 
+                };
+                if let Some(t) = start_time {
+                    delay_start = Utc::now();
+                    loop{
+                        let end_time = {
+                            let guard = delay_recovery_time.lock().await;
+                            *guard
+                        };
+                        if end_time.is_none() {
+                            delay_end = Utc::now();
+                            fault_log.lock().await.push((delay_start,delay_end));
+                            break;
+                        }else{
+                            tokio::task::yield_now().await;
+                        }
+                    }
+                }else{
+                    tokio::task::yield_now().await;
+                }
+            }
+        });
+        handle
+    }
+
+    pub fn trace_corrupt_fault_logging(&mut self) -> JoinHandle<()>{
+        let corrupt_recovery_time = self.corrupt_recovery_time.clone();
+        let fault_log = self.corrupt_fault_log.clone();
+        let handle = tokio::spawn(async move { ;
+            let mut corrupt_start;
+            let mut corrupt_end;
+            loop{
+                let start_time = {
+                    let guard = corrupt_recovery_time.lock().await;
+                    *guard
+                };
+                if let Some(t) = start_time {
+                    corrupt_start = Utc::now();
+                    loop{
+                        let end_time = {
+                            let guard = corrupt_recovery_time.lock().await;
+                            *guard
+                        };
+                        if end_time.is_none(){
+                            corrupt_end = Utc::now();
+                            fault_log.lock().await.push((corrupt_start,corrupt_end));
+                            break;
+                        }else{
+                            tokio::task::yield_now().await;
+                        }
+                    }
+                }else{
+                    tokio::task::yield_now().await;
+                }
+            }
+        });
+        handle
+    }
+    
     pub fn delay_fault_injection(&self) -> JoinHandle<()> {
         let delay_inject = self.delay_inject.clone();
         let sensor_type = self.sensor_type.clone();
         let handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(15)).await;
-            info!("{:?} started simulation for delay fault injection for every 60s",sensor_type);
+            tokio::time::sleep(Duration::from_secs(20)).await;
+            info!("{:?}\t: Started Simulation for Delay Fault Injection for every 60s",sensor_type);
             let now = tokio::time::Instant::now();
             let delay_interval = 60;
             let mut interval = tokio::time::interval_at(now + Duration::from_secs(delay_interval), Duration::from_secs(delay_interval));
             loop{
                 interval.tick().await;
                 delay_inject.store(true, std::sync::atomic::Ordering::SeqCst);
-                info!("{:?} injected delay fault",sensor_type);
+                info!("{:?}\t: Delay Fault Injected",sensor_type);
             }
         });
         handle
@@ -116,7 +188,7 @@ impl Sensor{
         let sensor_type = self.sensor_type.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            info!("{:?} started simulation for corrupt fault injection for every 60s",sensor_type);
+            info!("{:?}\t: Started Simulation for Corrupt Fault Injection for every 60s",sensor_type);
             let now = tokio::time::Instant::now();
             let corrupt_interval = 60;
             let mut interval = tokio::time::interval_at(now + Duration::from_secs(corrupt_interval), Duration::from_secs(corrupt_interval));
@@ -124,7 +196,7 @@ impl Sensor{
                 
                 interval.tick().await;
                 corrupt_inject.store(true, std::sync::atomic::Ordering::SeqCst);
-                info!("{:?} injected corrupt fault",sensor_type);
+                info!("{:?}\t: Corrupt Fault Injected",sensor_type);
             }
         });
         handle
@@ -163,7 +235,7 @@ impl Sensor{
 
                 //drift
                 *sensor_drift= actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
-                info!("{:?} data acquisition drift: {}ms", sensor_type,*sensor_drift);
+                //info!("{:?} data acquisition drift: {}ms", sensor_type,*sensor_drift);
                 expected_next_tick += Duration::from_millis(interval_ms);
 
                 //check corrupt and delay data injection
@@ -228,15 +300,16 @@ impl Sensor{
                         corrupt_status: corrupt,
                     },
                 };
+
                 
-                
-                info!("Data generated from {:?}", data.sensor_type);
+                //info!("Data generated from {:?}", data.sensor_type);
+
 
                 match buffer.push(data).await {
                     Ok(_) => {
-                        info!("{:?} data pushed to buffer", sensor_type);
                         let current_latency = clock.now().duration_since(actual_tick_time).as_millis() as f64;
-                        info!("Buffer insertion for {:?} data latency: {}ms", sensor_type, current_latency);
+                        info!("{:?}\t: Data Acquisition Done. Scheduling Drift: {}ms. Sensor Buffer Insertion Latency: {}ms.", sensor_type, sensor_drift,current_latency);
+                        //info!("Buffer insertion for {:?} data latency: {}ms", sensor_type, current_latency);
                         insert_count +=1;
                         *avg_sensor_latency = (*avg_sensor_latency + current_latency)/insert_count as f64;
                         if current_latency > *max_sensor_latency {
@@ -247,11 +320,12 @@ impl Sensor{
                         }
                     },
                     Err(e) => {
+                        info!("{:?}\t: Data Acquisition Done. Scheduling Drift: {}ms. Sensor Buffer Insertion Latency: - ms.", sensor_type, sensor_drift);
                         match sensor_type{
                             SensorType::OnboardTelemetrySensor => {
                                 missed_cycles += 1;
                                 if missed_cycles > 3 {
-                                    error!("Critical alert: >3 consecutive telemetry data misses");
+                                    error!("{:?}\t: Safety Alert: >3 consecutive telemetry data misses",sensor_type);
                                     missed_cycles = 0;
                                 }
                             }
@@ -262,6 +336,46 @@ impl Sensor{
             }
         });
         handle
+    }
+
+    pub async fn log_faults(&self) {
+        // Delay faults
+        let delay_faults = self.delay_fault_log.lock().await;
+        info!(
+        "{} - Delay Faults Detected: {}",
+        format!("{:?}", self.sensor_type),
+        delay_faults.len()
+    );
+        for (i, (start, end)) in delay_faults.iter().enumerate() {
+            let recovery_time = *end - *start;
+            info!(
+            "  [{}] Detected at: {}, Recovered at: {}, Recovery took: {} ms",
+            i + 1,
+            start.format("%Y-%m-%d %H:%M:%S%.3f"),
+            end.format("%Y-%m-%d %H:%M:%S%.3f"),
+            recovery_time.num_milliseconds()
+        );
+        }
+        info!("\n");
+
+        // Corrupt faults
+        let corrupt_faults = self.corrupt_fault_log.lock().await;
+        info!(
+        "{} - Corrupt Faults Detected: {}",
+        format!("{:?}", self.sensor_type),
+        corrupt_faults.len()
+    );
+        for (i, (start, end)) in corrupt_faults.iter().enumerate() {
+            let recovery_time = *end - *start;
+            info!(
+            "  [{}] Detected at: {}, Recovered at: {}, Recovery took: {} ms",
+            i + 1,
+            start.format("%Y-%m-%d %H:%M:%S%.3f"),
+            end.format("%Y-%m-%d %H:%M:%S%.3f"),
+            recovery_time.num_milliseconds()
+        );
+        }
+        info!("\n");
     }
 }
 

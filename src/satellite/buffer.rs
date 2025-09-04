@@ -25,12 +25,12 @@ impl SensorPrioritizedBuffer {
                 if data <= *highest {
                     // Drop new data if its priority is lower
                     // Data loss
-                    warn!("Buffer full, {:?} data loss",data.sensor_type);
-                    return Err("data loss".to_string());
+                    warn!("Sensor Buffer\t: Buffer full, {:?} data loss",data.sensor_type);
+                    return Err("LOSS".to_string());
                 } else {
                     // Data drop
                     let dropped_data = heap.pop_min().unwrap();
-                    warn!("Buffer full, {:?} data dropped",dropped_data.sensor_type);
+                    warn!("Sensor Buffer\t: Buffer full, {:?} data dropped",dropped_data.sensor_type);
                 }
             }
         }

@@ -66,7 +66,6 @@ impl SatelliteReceiver{
         let command_buffer = self.command_buffer.clone();
         let scheduler_command = self.scheduler_command.clone();
         let handle = tokio::spawn(async move{
-            let clock = Clock::new();
             loop{
                 if let Some(command) = command_buffer.pop().await{
                     let command_type = command.command_type;

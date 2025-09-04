@@ -54,7 +54,7 @@ impl Scheduler {
                                 priority: 4,
                             };
                             task_queue.lock().await.push(new_task);
-                            info!("Preempted {:?} Task", task_name);
+                            info!("Task Scheduler\t: {:?} Task Preempted", task_name);
                         }
                         SchedulerCommand::CDR(task_type, sensor_data) |
                         SchedulerCommand::DDR(task_type, sensor_data) => {
@@ -69,7 +69,7 @@ impl Scheduler {
                                 priority: 5,
                             };
                             task_queue.lock().await.push(new_task);
-                            info!("Preempted {:?} Task for {:?}", task_name, sensor_type);
+                            info!("Task Scheduler\t: {:?} Task for {:?} Preempted", task_name, sensor_type);
                         }
                         SchedulerCommand::RAA(task_type, urgent) |
                         SchedulerCommand::RRM(task_type, urgent) |
@@ -85,12 +85,12 @@ impl Scheduler {
                           
                             };
                             task_queue.lock().await.push(new_task);
-                            info!("Preempted Re-request {:?} Task", task_name);
+                            info!("Task Scheduler\t: Re-request {:?} Task Preempted", task_name);
                         }
                     }
     
                     if task_queue.lock().await.len() == 1000 {
-                        error!("Starvation occur, some tasks are never getting CPU time for execution")
+                        error!("Task Scheduler\t: Starvation occur, some tasks are never getting CPU time for execution")
                     }
                 }
             }
@@ -98,37 +98,47 @@ impl Scheduler {
         h 
     }
 
-    pub fn schedule_task(&self) -> Vec<JoinHandle<()>>{
+    pub fn schedule_task(&self, tel_task_drift: Arc<Mutex<f64>>, rad_task_drift: Arc<Mutex<f64>>, ant_task_drift: Arc<Mutex<f64>>) -> Vec<JoinHandle<()>>{
         let mut schedule_tasks_handle = Vec::new();
+        
         for task_type in self.tasks.iter().cloned(){
-            let task_queue = self.task_queue.clone();
-            let h = tokio::spawn(async move {
-                let clock = Clock::new();
-                let now = clock.now();
-                let now2 = Instant::now();
-                let mut expected_tick = now + Duration::from_millis(task_type.interval_ms.unwrap());
-                let mut interval = tokio::time::interval_at(now2 + Duration::from_millis(task_type.interval_ms.unwrap()),
-                                                            Duration::from_millis(task_type.interval_ms.unwrap()));
-                loop {
-                    interval.tick().await;
-                    let actual = clock.now();
-                    let drift = actual.duration_since(expected_tick).as_millis() as f64;
-                    info!("Task {:?} scheduled at {:?} with drift {:?}", task_type.name, actual, drift);
-                    expected_tick += Duration::from_millis(task_type.interval_ms.unwrap());
-                    let new_task = Task {
-                        task: task_type.clone(),
-                        release_time: actual,
-                        deadline: actual + Duration::from_millis(task_type.process_time.as_millis() as u64),
-                        data: None,
-                        priority: 1
-                    };
-                    task_queue.lock().await.push(new_task);
-                    if task_queue.lock().await.len() == 1000 {
-                        error!("Starvation occur, some tasks are never getting CPU time for execution")
+            let task_drift: Option<Arc<Mutex<f64>>> = match task_type.name {
+                TaskName::HealthMonitoring(..) => Some(tel_task_drift.clone()),
+                TaskName::SpaceWeatherMonitoring(..) => Some(rad_task_drift.clone()),
+                TaskName::AntennaAlignment(..) => Some(ant_task_drift.clone()),
+                _ => None,
+            };
+            if let Some(task_drift) = task_drift {
+                let task_queue = self.task_queue.clone();
+                let h = tokio::spawn(async move {
+                    let clock = Clock::new();
+                    let now = clock.now();
+                    let now2 = Instant::now();
+                    let mut expected_tick = now + Duration::from_millis(task_type.interval_ms.unwrap());
+                    let mut interval = tokio::time::interval_at(now2 + Duration::from_millis(task_type.interval_ms.unwrap()),
+                                                                Duration::from_millis(task_type.interval_ms.unwrap()));
+                    loop {
+                        interval.tick().await;
+                        let actual = clock.now();
+                        let drift = actual.duration_since(expected_tick).as_millis() as f64;
+                        *task_drift.lock().await = drift;
+                        info!("Task Scheduler\t: {:?} Task Scheduled. Scheduling Drift {:?}ms", task_type.name, drift);
+                        expected_tick += Duration::from_millis(task_type.interval_ms.unwrap());
+                        let new_task = Task {
+                            task: task_type.clone(),
+                            release_time: actual,
+                            deadline: actual + Duration::from_millis(task_type.process_time.as_millis() as u64),
+                            data: None,
+                            priority: 1
+                        };
+                        task_queue.lock().await.push(new_task);
+                        if task_queue.lock().await.len() == 1000 {
+                            error!("Task Scheduler\t: Starvation occur, some tasks are never getting CPU time for execution")
+                        }
                     }
-                }
-            });
-            schedule_tasks_handle.push(h);
+                });
+                schedule_tasks_handle.push(h);
+            }
         }
         schedule_tasks_handle
     }
@@ -146,79 +156,106 @@ impl Scheduler {
                               ant_delay_stat:Arc<AtomicBool>, ant_corrupt_stat: Arc<AtomicBool>,
                               tel_inject_delay:Arc<AtomicBool>, tel_inject_corrupt: Arc<AtomicBool>,
                               rad_inject_delay:Arc<AtomicBool>, rad_inject_corrupt: Arc<AtomicBool>,
-                              ant_inject_delay:Arc<AtomicBool>, ant_inject_corrupt: Arc<AtomicBool>) -> JoinHandle<()> {
+                              ant_inject_delay:Arc<AtomicBool>, ant_inject_corrupt: Arc<AtomicBool>,
+                              tel_task_count: Arc<Mutex<f64>>,tel_task_avg_start_delay: Arc<Mutex<f64>>, tel_task_max_start_delay: Arc<Mutex<f64>>, tel_task_min_start_delay: Arc<Mutex<f64>>,
+                              tel_task_avg_end_delay: Arc<Mutex<f64>>, tel_task_max_end_delay: Arc<Mutex<f64>>, tel_task_min_end_delay: Arc<Mutex<f64>>,
+                              rad_task_count: Arc<Mutex<f64>>,rad_task_avg_start_delay: Arc<Mutex<f64>>, rad_task_max_start_delay: Arc<Mutex<f64>>, rad_task_min_start_delay: Arc<Mutex<f64>>,
+                              rad_task_avg_end_delay: Arc<Mutex<f64>>, rad_task_max_end_delay: Arc<Mutex<f64>>, rad_task_min_end_delay: Arc<Mutex<f64>>,
+                              ant_task_count: Arc<Mutex<f64>>,ant_task_avg_start_delay: Arc<Mutex<f64>>, ant_task_max_start_delay: Arc<Mutex<f64>>, ant_task_min_start_delay: Arc<Mutex<f64>>,
+                              ant_task_avg_end_delay: Arc<Mutex<f64>>, ant_task_max_end_delay: Arc<Mutex<f64>>, ant_task_min_end_delay: Arc<Mutex<f64>>,
+                              downlink_buf_avg_latency: Arc<Mutex<f64>>, downlink_buf_max_latency: Arc<Mutex<f64>>, 
+                              downlink_buf_min_latency: Arc<Mutex<f64>>, downlink_buf_count: Arc<Mutex<f64>>) -> JoinHandle<()> {
         let task_queue = self.task_queue.clone();
         let downlink_buffer = self.downlink_buffer.clone();
         
         loop {
             if let Some(mut task) = task_queue.lock().await.pop() {
                 is_active.store(true, std::sync::atomic::Ordering::SeqCst);
-                let mut data = None;
-                let mut fault = None;
+           
                 match task.task.name {
                     TaskName::HealthMonitoring(rerequest,urgent)  => {
-                        (data,fault) = task.execute(self.sensor_buffer.clone(),
+                        task.execute(self.sensor_buffer.clone(), downlink_buffer.clone(),
                                                     self.scheduler_command.clone(), Some(telemetry_command.clone()),
                                                 tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                 tel_delay_stat.clone(),tel_corrupt_stat.clone(),
-                                                tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
+                                                tel_inject_delay.clone(),tel_inject_corrupt.clone(),
+                                     tel_task_count.clone(),tel_task_avg_start_delay.clone(),tel_task_max_start_delay.clone(),tel_task_min_start_delay.clone(),
+                                     tel_task_avg_end_delay.clone(),tel_task_max_end_delay.clone(),tel_task_min_end_delay.clone(),
+                                     downlink_buf_avg_latency.clone(),downlink_buf_max_latency.clone(),
+                                     downlink_buf_min_latency.clone(),downlink_buf_count.clone()).await;
                     }
                     TaskName::SpaceWeatherMonitoring(rerequest,urgent) => {
-                        (data,fault) = task.execute(self.sensor_buffer.clone(),
+                        task.execute(self.sensor_buffer.clone(), downlink_buffer.clone(),
                                                     self.scheduler_command.clone(), Some(radiation_command.clone()),
                                                     rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                     rad_delay_stat.clone(),rad_corrupt_stat.clone(),
-                                                    rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
+                                                    rad_inject_delay.clone(),rad_inject_corrupt.clone(),
+                                     rad_task_count.clone(),rad_task_avg_start_delay.clone(),rad_task_max_start_delay.clone(),rad_task_min_start_delay.clone(),
+                                     rad_task_avg_end_delay.clone(),rad_task_max_end_delay.clone(),rad_task_min_end_delay.clone(),
+                                     downlink_buf_avg_latency.clone(),downlink_buf_max_latency.clone(),
+                                     downlink_buf_min_latency.clone(),downlink_buf_count.clone()).await;
                     }
                     TaskName::AntennaAlignment(rerequest,urgent) => {
-                        (data,fault) = task.execute(self.sensor_buffer.clone(),
+                        task.execute(self.sensor_buffer.clone(), downlink_buffer.clone(),
                                                     self.scheduler_command.clone(), Some(antenna_command.clone()),
                                                     ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                     ant_delay_stat.clone(),ant_corrupt_stat.clone(),
-                                                    ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
+                                                    ant_inject_delay.clone(),ant_inject_corrupt.clone(),
+                                     ant_task_count.clone(),ant_task_avg_start_delay.clone(),ant_task_max_start_delay.clone(),ant_task_min_start_delay.clone(),
+                                     ant_task_avg_end_delay.clone(),ant_task_max_end_delay.clone(),ant_task_min_end_delay.clone(),
+                                     downlink_buf_avg_latency.clone(),downlink_buf_max_latency.clone(),
+                                     downlink_buf_min_latency.clone(),downlink_buf_count.clone()).await;
                     }
                     TaskName::RecoverCorruptData |
                     TaskName::RecoverDelayedData => {
                         let sensor_type = task.data.clone().unwrap().sensor_type;
                         match sensor_type {
                             SensorType::OnboardTelemetrySensor => {
-                                (data,fault) = task.execute(self.sensor_buffer.clone(),
+                                task.execute(self.sensor_buffer.clone(), downlink_buffer.clone(),
                                                             self.scheduler_command.clone(), Some(telemetry_command.clone()),
                                                             tel_delay_recovery_time.clone(),tel_corrupt_recovery_time.clone(),
                                                             tel_delay_stat.clone(),tel_corrupt_stat.clone(),
-                                                            tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
+                                                            tel_inject_delay.clone(),tel_inject_corrupt.clone(),
+                                             tel_task_count.clone(),tel_task_avg_start_delay.clone(),tel_task_max_start_delay.clone(),tel_task_min_start_delay.clone(),
+                                             tel_task_avg_end_delay.clone(),tel_task_max_end_delay.clone(),tel_task_min_end_delay.clone(),
+                                             downlink_buf_avg_latency.clone(),downlink_buf_max_latency.clone(),
+                                             downlink_buf_min_latency.clone(),downlink_buf_count.clone()).await;
                             }
                             SensorType::RadiationSensor => {
-                                (data,fault) = task.execute(self.sensor_buffer.clone(),
+                                task.execute(self.sensor_buffer.clone(), downlink_buffer.clone(),
                                                             self.scheduler_command.clone(), Some(radiation_command.clone()),
                                                             rad_delay_recovery_time.clone(),rad_corrupt_recovery_time.clone(),
                                                             rad_delay_stat.clone(),rad_corrupt_stat.clone(),
-                                                            rad_inject_delay.clone(),rad_inject_corrupt.clone()).await;
+                                                            rad_inject_delay.clone(),rad_inject_corrupt.clone(),
+                                             rad_task_count.clone(),rad_task_avg_start_delay.clone(),rad_task_max_start_delay.clone(),rad_task_min_start_delay.clone(),
+                                             rad_task_avg_end_delay.clone(),rad_task_max_end_delay.clone(),rad_task_min_end_delay.clone(),
+                                             downlink_buf_avg_latency.clone(),downlink_buf_max_latency.clone(),
+                                             downlink_buf_min_latency.clone(),downlink_buf_count.clone()).await;
                             }
                             SensorType::AntennaPointingSensor => {
-                                (data,fault) = task.execute(self.sensor_buffer.clone(),
+                                task.execute(self.sensor_buffer.clone(), downlink_buffer.clone(),
                                                             self.scheduler_command.clone(), Some(antenna_command.clone()),
                                                             ant_delay_recovery_time.clone(),ant_corrupt_recovery_time.clone(),
                                                             ant_delay_stat.clone(),ant_corrupt_stat.clone(),
-                                                            ant_inject_delay.clone(),ant_inject_corrupt.clone()).await;
+                                                            ant_inject_delay.clone(),ant_inject_corrupt.clone(),
+                                             ant_task_count.clone(),ant_task_avg_start_delay.clone(),ant_task_max_start_delay.clone(),ant_task_min_start_delay.clone(),
+                                             ant_task_avg_end_delay.clone(),ant_task_max_end_delay.clone(),ant_task_min_end_delay.clone(),
+                                             downlink_buf_avg_latency.clone(),downlink_buf_max_latency.clone(),
+                                             downlink_buf_min_latency.clone(),downlink_buf_count.clone()).await;
                             }
                         }
                     }
                     _ => {
-                        (data,fault) = task.execute(self.sensor_buffer.clone(),
+                        task.execute(self.sensor_buffer.clone(), downlink_buffer.clone(),
                                                     self.scheduler_command.clone(), None,
                                                     Arc::new(Mutex::new(None)),Arc::new(Mutex::new(None)),
                                                     tel_delay_stat.clone(),tel_corrupt_stat.clone(),
-                                                    tel_inject_delay.clone(),tel_inject_corrupt.clone()).await;
+                                                    tel_inject_delay.clone(),tel_inject_corrupt.clone(),
+                                     tel_task_count.clone(),tel_task_avg_start_delay.clone(),tel_task_max_start_delay.clone(),tel_task_min_start_delay.clone(),
+                                     tel_task_avg_end_delay.clone(),tel_task_max_end_delay.clone(),tel_task_min_end_delay.clone(),
+                                     downlink_buf_avg_latency.clone(),downlink_buf_max_latency.clone(),
+                                     downlink_buf_min_latency.clone(),downlink_buf_count.clone()).await;
                     }
-                }
-                if let Some(sensor_data) = data{
-                    info!("{:?} data push into downlink buffer",sensor_data.sensor_type);
-                    downlink_buffer.push(TransmissionData::Sensor(sensor_data)).await;
-                }
-                if let Some(fault_data) = fault{
-                    info!("{:?} fault situation data push into downlink buffer",fault_data.situation);
-                    downlink_buffer.push(TransmissionData::Fault(fault_data)).await;
                 }
                 is_active.store(false, std::sync::atomic::Ordering::SeqCst);
             }
