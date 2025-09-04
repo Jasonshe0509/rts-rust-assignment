@@ -234,7 +234,7 @@ impl Task {
             match data {
                 Some(data) => {
                     let diff = actual_read_data_time - data.timestamp;
-                    if (diff.num_milliseconds() > 400) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst){
+                    if (diff.num_milliseconds() > 500) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst){
                         let msg = format!("{:?} Task\t: Start receiving delayed {:?} data with {}ms delay, task terminated"
                                           , self.task.name, data.sensor_type, diff.num_milliseconds()).to_string();
                         warn!("{}",msg);
@@ -264,14 +264,14 @@ impl Task {
                             }
                         }
                         return
-                    } else if (!(diff > chrono::Duration::milliseconds(400))) && delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
+                    } else if (!(diff > chrono::Duration::milliseconds(500))) && delay_stat.load(std::sync::atomic::Ordering::SeqCst) {
                         //check recovery
                         let msg = format!("{:?} Task\t: Start receiving recovered {:?} data without delay."
                                           , self.task.name, data.sensor_type).to_string();
                         info!("{}",msg);
                         delay_stat.store(false, std::sync::atomic::Ordering::SeqCst);
                         
-                    } else if (!(diff > chrono::Duration::milliseconds(400))) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst) {} else {
+                    } else if (!(diff > chrono::Duration::milliseconds(500))) && !delay_stat.load(std::sync::atomic::Ordering::SeqCst) {} else {
                         let msg = format!("{:?} Task\t: Still receiving delayed {:?} data, task terminated", self.task.name, data.sensor_type).to_string();
                         warn!("{}",msg);
                         return;

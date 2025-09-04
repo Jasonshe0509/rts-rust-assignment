@@ -55,10 +55,10 @@ impl LogGenerator {
             .with_filter(TracingLevelFilter::INFO);
 
         // Register subscriber
-        Registry::default()
+        let _ = Registry::default()
             .with(file_layer)
             .with(stdout_layer)
-            .init();
+            .try_init();
 
         Self {
             log_file_path: PathBuf::from(log_file_path),

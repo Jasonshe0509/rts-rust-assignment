@@ -25,5 +25,9 @@ tracing-log = "0.2"
 time = "0.3.43"
 
 [dev-dependencies]
-criterion = {version= "0.7.0", features = ["html_reports"]}
+criterion = {version= "0.7.0", features = ["html_reports","async_tokio"]}
 bma-benchmark = "0.0.24"
+
+[[bench]]
+name = "satellite_bench"
+harness = false

@@ -259,7 +259,7 @@ impl Sensor{
                             SensorCommand::IP => 5,
                             _ => 1,
                         },
-                        timestamp: Utc::now() + delay,
+                        timestamp: Utc::now() - delay,
                         data: SensorPayloadDataType::AntennaData {
                             azimuth: rng.random_range(0.0..360.0),
                             elevation: rng.random_range(-90.0..90.0),
@@ -274,7 +274,7 @@ impl Sensor{
                             SensorCommand::IP => 5,
                             _ => 3,
                         },
-                        timestamp: Utc::now() + delay,
+                        timestamp: Utc::now() - delay,
                         data: SensorPayloadDataType::TelemetryData {
                             power: rng.random_range(50.0..200.0),
                             temperature: rng.random_range(20.0..120.0),
@@ -292,7 +292,7 @@ impl Sensor{
                             SensorCommand::IP => 5,
                             _ => 2,
                         },
-                        timestamp:  Utc::now() + delay,
+                        timestamp:  Utc::now() - delay,
                         data: SensorPayloadDataType::RadiationData {
                             proton_flux: rng.random_range(10.0..1000000.0),
                             solar_radiation_level: rng.random_range(0.00000001..0.001),
