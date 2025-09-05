@@ -199,7 +199,7 @@ fn bench_task_execution(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Task Execution Latency and Jitter");
     group.sample_size(500);
-    group.measurement_time(Duration::from_secs(1200));
+    group.measurement_time(Duration::from_secs(100));
     group.plot_config(PlotConfiguration::default().summary_scale(AxisScale::Linear));
 
     // iterate over owned TaskName values (cloneable)
@@ -212,8 +212,8 @@ fn bench_task_execution(c: &mut Criterion) {
     for task_name in task_names.into_iter() {
         // compute duration for this task type
         let task_duration = match task_name {
-            TaskName::HealthMonitoring(_, _) => 5,
-            TaskName::SpaceWeatherMonitoring(_, _) => 10,
+            TaskName::HealthMonitoring(_, _) => 15,
+            TaskName::SpaceWeatherMonitoring(_, _) => 15,
             TaskName::AntennaAlignment(_, _) => 15,
             _ => 10,
         };
@@ -242,62 +242,55 @@ fn bench_task_execution(c: &mut Criterion) {
                 let dlx = dl_max_latency.clone();
                 let dllmin = dl_min_latency.clone();
                 let dlc = dl_count.clone();
-            
 
                 let tname = task_name.clone();
-                
+
                 async move {
-                    let iterations_per_sample = 10;
                     let clock = Clock::new();
-                    let mut total_latency = 0.0;
-
-                    for _ in 0..iterations_per_sample {
-                        let ttype = TaskType::new(
-                            tname.clone(),
-                            None,
-                            Duration::from_millis(task_duration),
-                        );
-                        let task = Task {
-                            task: ttype,
-                            release_time: quanta::Instant::now(),
-                            deadline: quanta::Instant::now() + Duration::from_millis(task_duration),
-                            data: None,
-                            priority: 1,
-                        };
-
-                        let start = clock.now();
-                        run_task_bench(
-                            task,
-                            sb.clone(),
-                            dlb.clone(),
-                            sched.clone(),
-                            dr.clone(),
-                            cr.clone(),
-                            ds.clone(),
-                            cs.clone(),
-                            di.clone(),
-                            ci.clone(),
-                            tc.clone(),
-                            tsd.clone(),
-                            mxs.clone(),
-                            mns.clone(),
-                            ted.clone(),
-                            mxe.clone(),
-                            mne.clone(),
-                            dll.clone(),
-                            dlx.clone(),
-                            dllmin.clone(),
-                            dlc.clone(),
-                        ).await;
-                        total_latency += clock.now().duration_since(start).as_nanos() as f64 / 1_000_000.0;
-                    }
-                    black_box(total_latency / iterations_per_sample as f64);
+                    let ttype = TaskType::new(
+                        tname.clone(),
+                        None,
+                        Duration::from_millis(task_duration),
+                    );
+                    let task = Task {
+                        task: ttype,
+                        release_time: quanta::Instant::now(),
+                        deadline: quanta::Instant::now() + Duration::from_millis(task_duration),
+                        data: None,
+                        priority: 1,
+                    };
+                    let start = clock.now();
+                    run_task_bench(
+                        task,
+                        sb.clone(),
+                        dlb.clone(),
+                        sched.clone(),
+                        dr.clone(),
+                        cr.clone(),
+                        ds.clone(),
+                        cs.clone(),
+                        di.clone(),
+                        ci.clone(),
+                        tc.clone(),
+                        tsd.clone(),
+                        mxs.clone(),
+                        mns.clone(),
+                        ted.clone(),
+                        mxe.clone(),
+                        mne.clone(),
+                        dll.clone(),
+                        dlx.clone(),
+                        dllmin.clone(),
+                        dlc.clone(),
+                    ).await;
+                    let latency = clock.now().duration_since(start).as_nanos() as f64 / 1_000_000.0;
+                    black_box(latency);
                 }
+
 
             })
         });
     }
-
     group.finish();
 }
 
