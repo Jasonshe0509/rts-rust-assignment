@@ -133,9 +133,18 @@ async fn run_task_bench(
         *dl_cnt = 0.0;
     }
 
-    sensor_buffer.push(mock_sensor_data(SensorType::RadiationSensor)).await;
-    sensor_buffer.push(mock_sensor_data(SensorType::OnboardTelemetrySensor)).await;
-    sensor_buffer.push(mock_sensor_data(SensorType::AntennaPointingSensor)).await;
+    match task.task.name{
+        TaskName::HealthMonitoring(_, _) => {
+            let _ = sensor_buffer.push(mock_sensor_data(SensorType::OnboardTelemetrySensor)).await;
+        }
+        TaskName::SpaceWeatherMonitoring(_,_)=> {
+            let _ = sensor_buffer.push(mock_sensor_data(SensorType::RadiationSensor)).await;
+        }
+        TaskName::AntennaAlignment(_,_) => {
+            let _ = sensor_buffer.push(mock_sensor_data(SensorType::AntennaPointingSensor)).await;
+        }
+        _ => {}
+    }
 
     task.execute(
         sensor_buffer,
@@ -189,8 +198,8 @@ fn bench_task_execution(c: &mut Criterion) {
     let dl_count = Arc::new(Mutex::new(0.0));
 
     let mut group = c.benchmark_group("Task Execution Latency and Jitter");
-    group.sample_size(200);
-    group.measurement_time(Duration::from_secs(50));
+    group.sample_size(500);
+    group.measurement_time(Duration::from_secs(1200));
     group.plot_config(PlotConfiguration::default().summary_scale(AxisScale::Linear));
 
     // iterate over owned TaskName values (cloneable)
@@ -203,16 +212,14 @@ fn bench_task_execution(c: &mut Criterion) {
     for task_name in task_names.into_iter() {
         // compute duration for this task type
         let task_duration = match task_name {
-            TaskName::HealthMonitoring(_, _) => config::HEALTH_MONITORING_TASK_DURATION,
-            TaskName::SpaceWeatherMonitoring(_, _) => config::SPACE_WEATHER_MONITORING_TASK_DURATION,
-            TaskName::AntennaAlignment(_, _) => config::ANTENNA_MONITORING_TASK_DURATION,
-            _ => 100,
+            TaskName::HealthMonitoring(_, _) => 5,
+            TaskName::SpaceWeatherMonitoring(_, _) => 10,
+            TaskName::AntennaAlignment(_, _) => 15,
+            _ => 10,
         };
 
         let bench_id = format!("execute_{:?}", task_name);
         group.bench_function(&bench_id, |b| {
-            // IMPORTANT: do NOT move resources permanently into closure.
-            // Instead, clone them *inside* the closure each iteration.
             b.to_async(&rt).iter(|| {
                 // clone per iteration
                 let sb = sensor_buffer.clone();
@@ -235,48 +242,58 @@ fn bench_task_execution(c: &mut Criterion) {
                 let dlx = dl_max_latency.clone();
                 let dllmin = dl_min_latency.clone();
                 let dlc = dl_count.clone();
+            
 
-                // construct a fresh Task per iteration (clone inner TaskName for TaskType)
-                let ttype = TaskType::new(task_name.clone(), None, Duration::from_millis(task_duration));
-                let task = Task {
-                    task: ttype,
-                    release_time: quanta::Instant::now(),
-                    deadline: quanta::Instant::now() + Duration::from_millis(task_duration),
-                    data: None,
-                    priority: 1,
-                };
-
+                let tname = task_name.clone();
+                
                 async move {
+                    let iterations_per_sample = 10;
                     let clock = Clock::new();
-                    let start = clock.now();
-                    // now move the per-iteration clones into the async future
-                    run_task_bench(
-                        task,
-                        sb,
-                        dlb,
-                        sched,
-                        dr,
-                        cr,
-                        ds,
-                        cs,
-                        di,
-                        ci,
-                        tc,
-                        tsd,
-                        mxs,
-                        mns,
-                        ted,
-                        mxe,
-                        mne,
-                        dll,
-                        dlx,
-                        dllmin,
-                        dlc,
-                    )
-                        .await;
-                    let latency = clock.now().duration_since(start).as_nanos() as f64 / 1_000_000.0;
-                    black_box(latency);
+                    let mut total_latency = 0.0;
+
+                    for _ in 0..iterations_per_sample {
+                        let ttype = TaskType::new(
+                            tname.clone(),
+                            None,
+                            Duration::from_millis(task_duration),
+                        );
+                        let task = Task {
+                            task: ttype,
+                            release_time: quanta::Instant::now(),
+                            deadline: quanta::Instant::now() + Duration::from_millis(task_duration),
+                            data: None,
+                            priority: 1,
+                        };
+
+                        let start = clock.now();
+                        run_task_bench(
+                            task,
+                            sb.clone(),
+                            dlb.clone(),
+                            sched.clone(),
+                            dr.clone(),
+                            cr.clone(),
+                            ds.clone(),
+                            cs.clone(),
+                            di.clone(),
+                            ci.clone(),
+                            tc.clone(),
+                            tsd.clone(),
+                            mxs.clone(),
+                            mns.clone(),
+                            ted.clone(),
+                            mxe.clone(),
+                            mne.clone(),
+                            dll.clone(),
+                            dlx.clone(),
+                            dllmin.clone(),
+                            dlc.clone(),
+                        ).await;
+                        total_latency += clock.now().duration_since(start).as_nanos() as f64 / 1_000_000.0;
+                    }
+                    black_box(total_latency / iterations_per_sample as f64);
                 }
+
             })
         });
     }
@@ -316,42 +333,32 @@ fn bench_downlink_transmission_queue_insertion(c: &mut Criterion) {
     group.finish();
 }
 
-/// Measure latency until the command is popped from command_buffer and pushed into task_queue
-pub async fn simulate_command_acceptance(cmd: CommandType) -> u128 {
+
+pub async fn simulate_command_acceptance(
+    cmd: CommandType,
+    scheduler_command: Arc<FifoQueue<SchedulerCommand>>,
+) -> u128 {
     let clock = Clock::new();
     let start = clock.now();
 
-    // Setup scheduler basics
-    let scheduler_command = Arc::new(FifoQueue::<SchedulerCommand>::new(10));
-    let sensor_buffer = Arc::new(SensorPrioritizedBuffer::new(10));
-    let downlink_buffer = Arc::new(FifoQueue::<TransmissionData>::new(10));
-
-    let tasks: Vec<TaskType> = vec![];
-    let scheduler = Scheduler::new(sensor_buffer, downlink_buffer, tasks, scheduler_command.clone());
-
-    // Spawn preemption loop
-    let _preemption_handle = scheduler.check_preemption();
-
-    // Simulate ground command injection (RR and LC push to scheduler_command)
     match cmd {
-        CommandType::RR(sensor) => {
+        CommandType::RR(_) => {
             scheduler_command.push(SchedulerCommand::RRM(
                 TaskType::new(TaskName::SpaceWeatherMonitoring(true, false),
                               None, Duration::from_millis(50)), false)).await;
         }
-        CommandType::LC(sensor) => {
+        CommandType::LC(_) => {
             scheduler_command.push(SchedulerCommand::RRM(
                 TaskType::new(TaskName::SpaceWeatherMonitoring(true, true),
                               None, Duration::from_millis(50)), true)).await;
         }
         CommandType::PG | CommandType::SC | CommandType::EC => {
-            // These don’t create tasks, just simulate acceptance
+            // simple response, nothing heavy
         }
     }
 
-    // Acceptance latency is “command received → scheduler_command consumed → task pushed”
     let end = clock.now();
-    end.duration_since(start).as_millis()
+    end.duration_since(start).as_micros() // finer resolution
 }
 
 
@@ -361,30 +368,33 @@ fn bench_command_response(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let mut group = c.benchmark_group("Command Response Latency");
 
-    // You can tune these if commands are long-running
     group.sample_size(500);
-    group.measurement_time(Duration::from_secs(300));
+    group.measurement_time(Duration::from_secs(100));
 
-    // List of command types you want to benchmark individually
     let commands = vec![
-        CommandType::PG,  
-        CommandType::SC,   
+        CommandType::PG,
+        CommandType::SC,
         CommandType::EC,
-        CommandType::RR(SensorType::OnboardTelemetrySensor),   // Re-request
-        CommandType::LC(SensorType::OnboardTelemetrySensor),   // Lost of contact
+        CommandType::RR(SensorType::OnboardTelemetrySensor),
+        CommandType::LC(SensorType::OnboardTelemetrySensor),
     ];
+    
+    let scheduler_command = Arc::new(FifoQueue::<SchedulerCommand>::new(100));
 
     for cmd in commands {
         let name = format!("{:?}", cmd);
+        let sched = scheduler_command.clone();
 
-        // Benchmark A: Acceptance latency (uplink → into task_queue)
         group.bench_function(format!("{}_acceptance", name), |b| {
-            b.to_async(&rt).iter(|| async {
-                let latency = simulate_command_acceptance(cmd.clone()).await;
-                black_box(latency);
+            b.to_async(&rt).iter(|| {
+                let sched = sched.clone();
+                let cmd = cmd.clone(); 
+                async move {
+                    let latency = simulate_command_acceptance(cmd, sched).await;
+                    black_box(latency);
+                }
             });
         });
-        
     }
 
     group.finish();
