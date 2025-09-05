@@ -102,13 +102,13 @@ impl Scheduler {
         let mut schedule_tasks_handle = Vec::new();
         
         for task_type in self.tasks.iter().cloned(){
-            let task_drift: Option<Arc<Mutex<f64>>> = match task_type.name {
+            let task_drifts: Option<Arc<Mutex<f64>>> = match task_type.name {
                 TaskName::HealthMonitoring(..) => Some(tel_task_drift.clone()),
                 TaskName::SpaceWeatherMonitoring(..) => Some(rad_task_drift.clone()),
                 TaskName::AntennaAlignment(..) => Some(ant_task_drift.clone()),
                 _ => None,
             };
-            if let Some(task_drift) = task_drift {
+            if let Some(task_drift) = task_drifts {
                 let task_queue = self.task_queue.clone();
                 let h = tokio::spawn(async move {
                     let clock = Clock::new();
@@ -117,12 +117,13 @@ impl Scheduler {
                     let mut expected_tick = now + Duration::from_millis(task_type.interval_ms.unwrap());
                     let mut interval = tokio::time::interval_at(now2 + Duration::from_millis(task_type.interval_ms.unwrap()),
                                                                 Duration::from_millis(task_type.interval_ms.unwrap()));
+                    let mut drift = task_drift.lock().await;
                     loop {
                         interval.tick().await;
                         let actual = clock.now();
-                        let drift = actual.duration_since(expected_tick).as_millis() as f64;
-                        *task_drift.lock().await = drift;
-                        info!("Task Scheduler\t: {:?} Task Scheduled. Scheduling Drift {:?}ms", task_type.name, drift);
+                        let current_drift = actual.duration_since(expected_tick).as_millis() as f64;
+                        *drift = current_drift;
+                        info!("Task Scheduler\t: {:?} Task Scheduled. Scheduling Drift {:?}ms", task_type.name, current_drift);
                         expected_tick += Duration::from_millis(task_type.interval_ms.unwrap());
                         let new_task = Task {
                             task: task_type.clone(),

@@ -209,7 +209,7 @@ impl Sensor{
         let sensor_type = self.sensor_type.clone();
         let delay_inject = self.delay_inject.clone();
         let corrupt_inject = self.corrupt_inject.clone();
-        let drift = sensor_drift.clone();
+        let drifts = sensor_drift.clone();
         let avg_latency = average_insertion_latency.clone();
         let max_latency = max_insertion_latency.clone();
         let min_latency = min_insertion_latency.clone();
@@ -221,7 +221,7 @@ impl Sensor{
             let start_time = clock.now();
             let mut expected_next_tick = start_time + Duration::from_millis(interval_ms);
             let mut missed_cycles = 0;
-            let mut sensor_drift = drift.lock().await;
+            let mut drift = drifts.lock().await;
             let mut avg_sensor_latency = avg_latency.lock().await;
             let mut max_sensor_latency = max_latency.lock().await;
             let mut min_sensor_latency = min_latency.lock().await;
@@ -235,7 +235,8 @@ impl Sensor{
                 
 
                 //drift
-                *sensor_drift= actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
+                *drift= actual_tick_time.duration_since(expected_next_tick).as_millis() as f64;
+                
                 //info!("{:?} data acquisition drift: {}ms", sensor_type,*sensor_drift);
                 expected_next_tick += Duration::from_millis(interval_ms);
 
@@ -309,7 +310,7 @@ impl Sensor{
                 match buffer.push(data).await {
                     Ok(_) => {
                         let current_latency = clock.now().duration_since(actual_tick_time).as_millis() as f64;
-                        info!("{:?}\t: Data Acquisition Done. Scheduling Drift: {}ms. Sensor Buffer Insertion Latency: {}ms.", sensor_type, sensor_drift,current_latency);
+                        info!("{:?}\t: Data Acquisition Done. Scheduling Drift: {:?}ms. Sensor Buffer Insertion Latency: {}ms.", sensor_type, *drift,current_latency);
                         //info!("Buffer insertion for {:?} data latency: {}ms", sensor_type, current_latency);
                         insert_count +=1;
                         total_latency += current_latency;
@@ -322,7 +323,7 @@ impl Sensor{
                         }
                     },
                     Err(e) => {
-                        info!("{:?}\t: Data Acquisition Done. Scheduling Drift: {}ms. Sensor Buffer Insertion Latency: - ms.", sensor_type, sensor_drift);
+                        info!("{:?}\t: Data Acquisition Done. Scheduling Drift: {:?}ms. Sensor Buffer Insertion Latency: - ms.", *drift, sensor_drift);
                         match sensor_type{
                             SensorType::OnboardTelemetrySensor => {
                                 missed_cycles += 1;
