@@ -2,6 +2,7 @@ use crate::satellite::fault_message::{FaultMessageData, FaultSituation};
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use log::info;
 
 static FAULT_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -56,9 +57,9 @@ impl FaultEvent {
             .sum::<usize>()
             + self.fault_resolve.len();
 
-        println!("Total faults detected : {}", total_faults);
-        println!("Total faults recovered: {}", self.fault_resolve.len());
-        println!("---------------------------------");
+        info!("Total faults detected : {}", total_faults);
+        info!("Total faults recovered: {}", self.fault_resolve.len());
+        info!("---------------------------------");
 
         // Group recovery times by situation
         let mut recovery_map: HashMap<FaultSituation, Vec<u64>> = HashMap::new();
@@ -87,7 +88,7 @@ impl FaultEvent {
             if let Some((min, max, avg)) = stats(times) {
                 match situation {
                     FaultSituation::DelayedData(sensor) | FaultSituation::CorruptedData(sensor) => {
-                        println!(
+                        info!(
                             "[Satellite Fault Issue: {:?}] → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
                             situation,
                             times.len(),
@@ -97,7 +98,7 @@ impl FaultEvent {
                         );
                     }
                     FaultSituation::ReRequest(sensor) | FaultSituation::LossOfContact(sensor) => {
-                        println!(
+                        info!(
                             "[Missing/Delay Detected Issue from Ground: {:?}] → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
                             situation,
                             times.len(),

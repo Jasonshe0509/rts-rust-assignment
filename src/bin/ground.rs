@@ -162,7 +162,7 @@ async fn main() {
         mem.max,
         mem.average()
     );
-    println!("===== Fault Recovery Report =====");
+    info!("===== Fault Recovery Report =====");
     let fault = fault_event.lock().await;
     fault.report();
 

@@ -2140,6 +2140,7 @@ dependencies = [
  "chrono",
  "criterion",
  "env_logger",
+ "fastrand",
  "flate2",
  "futures-util",
  "lapin",
