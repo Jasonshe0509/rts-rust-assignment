@@ -212,10 +212,10 @@ fn bench_task_execution(c: &mut Criterion) {
     for task_name in task_names.into_iter() {
         // compute duration for this task type
         let task_duration = match task_name {
-            TaskName::HealthMonitoring(_, _) => 15,
-            TaskName::SpaceWeatherMonitoring(_, _) => 15,
-            TaskName::AntennaAlignment(_, _) => 15,
-            _ => 10,
+            TaskName::HealthMonitoring(_, _) => 0,
+            TaskName::SpaceWeatherMonitoring(_, _) => 0,
+            TaskName::AntennaAlignment(_, _) => 0,
+            _ => 0,
         };
 
         let bench_id = format!("execute_{:?}", task_name);
