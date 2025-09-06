@@ -3,6 +3,7 @@ use lapin::types::FieldTable;
 use lapin::{Connection, ConnectionProperties};
 use rts_rust_assignment::ground::command::{Command, CommandType};
 use rts_rust_assignment::ground::deadline_metrics::DeadlineMetricsMap;
+use rts_rust_assignment::ground::jitter_metrics::JitterMetricsMap;
 use rts_rust_assignment::ground::program_utilization::{Metrics, ProgramUtilization};
 use rts_rust_assignment::ground::{
     fault_event::FaultEvent, receiver::Receiver, scheduler::Scheduler, sender::Sender,
@@ -16,7 +17,6 @@ use tokio;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::{Duration, timeout};
 use tracing::{error, info};
-use rts_rust_assignment::ground::jitter_metrics::JitterMetricsMap;
 
 #[tokio::main]
 async fn main() {
@@ -54,7 +54,7 @@ async fn main() {
         Arc::clone(&notify),
         Arc::clone(&total_uplink_commands),
         Arc::clone(&deadline_metrics),
-        Arc::clone(&jitter_metrics)
+        Arc::clone(&jitter_metrics),
     );
 
     let schedule_command: Arc<Mutex<Option<Command>>> = Arc::new(Mutex::new(None));
@@ -139,8 +139,16 @@ async fn main() {
         info!(
             "[Main] Command {:?} → Jitter(min={}, max={}, avg={:?})",
             cmd,
-            if metrics.min_jitter == i64::MAX { 0 } else { metrics.min_jitter },
-            if metrics.max_jitter == i64::MIN { 0 } else { metrics.max_jitter },
+            if metrics.min_jitter == i64::MAX {
+                0
+            } else {
+                metrics.min_jitter
+            },
+            if metrics.max_jitter == i64::MIN {
+                0
+            } else {
+                metrics.max_jitter
+            },
             metrics.avg().unwrap_or(0.0)
         );
     }
@@ -165,6 +173,8 @@ async fn main() {
     info!("===== Fault Recovery Report =====");
     let fault = fault_event.lock().await;
     fault.report();
+    let system = system_state.lock().await;
+    system.rejection_summary();
 
     info!("[Main] Ground system shutting down");
 }

@@ -69,32 +69,30 @@ impl Command {
             CommandType::EC => Ok(()),
 
             CommandType::RR(sensor) => {
-                let active = {
-                    let state = system_state.lock().await;
-                    state.is_sensor_active(sensor)
-                };
-                if active {
+                let mut state = system_state.lock().await;
+                if state.is_sensor_active(sensor) {
                     Ok(())
                 } else {
-                    Err(format!(
+                    let reason = format!(
                         "[Command] sensor {:?} in the system state is not active",
                         sensor
-                    ))
+                    );
+                    state.record_rejection(self.command_type.clone(), reason.clone());
+                    Err(reason)
                 }
             }
 
             CommandType::LC(sensor) => {
-                let has_consecutive_failures = {
-                    let state = system_state.lock().await;
-                    state.has_consecutive_failures(sensor)
-                };
-                if has_consecutive_failures {
+                let mut state = system_state.lock().await;
+                if state.has_consecutive_failures(sensor) {
                     Ok(())
                 } else {
-                    Err(format!(
+                    let reason = format!(
                         "[Command] sensor {:?} in the system state have insufficient failure (<3)",
                         sensor
-                    ))
+                    );
+                    state.record_rejection(self.command_type.clone(), reason.clone());
+                    Err(reason)
                 }
             }
         }

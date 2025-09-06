@@ -236,11 +236,16 @@ impl GroundService {
 
             fault.add_fault_resolve(resolve_data);
         }
-        info!(
-            "[GroundService] Update system state sensor {:?} status to reactivate",
-            sensor
-        );
-        state.set_sensor_active(sensor, true);
+        match &fault_message_data.situation {
+            FaultSituation::CorruptedDataRecovered(sensor) | FaultSituation::DelayedDataRecovered (sensor) => {
+                info!(
+                    "[GroundService] Update system state sensor {:?} status to reactivate",
+                    sensor
+                );
+                state.set_sensor_active(sensor, true);
+            }
+            _ => {}
+        }
     }
 
     async fn check_cooldown(tracker: &TriggerTracker, situation: &FaultSituation) -> bool {
