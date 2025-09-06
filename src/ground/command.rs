@@ -4,7 +4,6 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -70,24 +69,30 @@ impl Command {
             CommandType::EC => Ok(()),
 
             CommandType::RR(sensor) => {
-                let state = system_state.lock().await;
-                if state.is_sensor_active(sensor) {
+                let active = {
+                    let state = system_state.lock().await;
+                    state.is_sensor_active(sensor)
+                };
+                if active {
                     Ok(())
                 } else {
                     Err(format!(
-                        "sensor {:?} in the system state is not active",
+                        "[Command] sensor {:?} in the system state is not active",
                         sensor
                     ))
                 }
             }
 
             CommandType::LC(sensor) => {
-                let state = system_state.lock().await;
-                if state.has_consecutive_failures(sensor) {
+                let has_consecutive_failures = {
+                    let state = system_state.lock().await;
+                    state.has_consecutive_failures(sensor)
+                };
+                if has_consecutive_failures {
                     Ok(())
                 } else {
                     Err(format!(
-                        "sensor {:?} in the system state have insufficient failure (<3)",
+                        "[Command] sensor {:?} in the system state have insufficient failure (<3)",
                         sensor
                     ))
                 }

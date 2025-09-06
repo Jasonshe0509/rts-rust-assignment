@@ -112,19 +112,19 @@ impl GroundService {
         match &fault_message_data.situation {
             FaultSituation::CorruptedData(sensor) | FaultSituation::DelayedData(sensor) => {
                 info!(
-                    "Fault: {:?} has been found from the satellite, waiting from recovery.",
+                    "[GroundService] Fault: {:?} has been found from the satellite, waiting from recovery.",
                     fault_message_data.situation
                 );
                 fault.add_fault(&fault_message_data);
                 info!(
-                    "Update system state sensor {:?} status to deactivate",
+                    "[GroundService] Update system state sensor {:?} status to deactivate",
                     sensor
                 );
                 state.set_sensor_active(sensor, false)
             }
             FaultSituation::CorruptedDataRecovered(sensor) => {
                 info!(
-                    "Recovery: {:?} has been found from the satellite.",
+                    "[GroundService] Recovery: {:?} has been found from the satellite.",
                     fault_message_data.situation
                 );
                 Self::handle_recovery(
@@ -137,7 +137,7 @@ impl GroundService {
             }
             FaultSituation::DelayedDataRecovered(sensor) => {
                 info!(
-                    "Recovery: {:?} has been found from the satellite.",
+                    "[GroundService] Recovery: {:?} has been found from the satellite.",
                     fault_message_data.situation
                 );
                 Self::handle_recovery(
@@ -150,7 +150,7 @@ impl GroundService {
             }
             FaultSituation::RespondReRequest(sensor) => {
                 info!(
-                    "Recovery: {:?} has been found from the satellite.",
+                    "[GroundService] Recovery: {:?} has been found from the satellite.",
                     fault_message_data.situation
                 );
                 Self::handle_recovery(
@@ -163,7 +163,7 @@ impl GroundService {
             }
             FaultSituation::RespondLossOfContact(sensor) => {
                 info!(
-                    "Recovery: {:?} has been found from the satellite.",
+                    "[GroundService] Recovery: {:?} has been found from the satellite.",
                     fault_message_data.situation
                 );
                 Self::handle_recovery(
@@ -176,7 +176,7 @@ impl GroundService {
             }
             _ => {
                 error!(
-                    "Unknown fault situation has been detected: {:?}",
+                    "[GroundService] Unknown fault situation has been detected: {:?}",
                     fault_message_data.situation
                 );
             }
@@ -199,20 +199,20 @@ impl GroundService {
                 match &fault_data.situation {
                     FaultSituation::ReRequest(sensor) => {
                         info!(
-                            "Sensor {:?} recovered normally from ReRequest. Recovery time: {} ms ",
+                            "[GroundService] Sensor {:?} recovered normally from ReRequest. Recovery time: {} ms ",
                             sensor, recovery_time
                         );
                     }
                     FaultSituation::LossOfContact(sensor) => {
                         info!(
-                            "Sensor {:?} recovered normally from LossOfContact. Recovery time: {} ms ",
+                            "[GroundService] Sensor {:?} recovered normally from LossOfContact. Recovery time: {} ms ",
                             sensor, recovery_time
                         );
                     }
                     //Satellite critical fault
                     _ => {
                         warn!(
-                            "Critical ground alert! Sensor: {:?}, Recovery time: {} ms (threshold: 100 ms)",
+                            "[GroundService] Critical ground alert! Sensor: {:?}, Recovery time: {} ms (threshold: 100 ms)",
                             sensor, recovery_time
                         );
                     }
@@ -220,7 +220,7 @@ impl GroundService {
                 is_trigger_critical_ground_alert = true;
             } else {
                 info!(
-                    "Sensor {:?} recovered normally from {:?}. Recovery time: {} ms (within threshold)",
+                    "[GroundService] Sensor {:?} recovered normally from {:?}. Recovery time: {} ms (within threshold)",
                     sensor, fault_data.situation, recovery_time
                 );
             }
@@ -237,7 +237,7 @@ impl GroundService {
             fault.add_fault_resolve(resolve_data);
         }
         info!(
-            "Update system state sensor {:?} status to reactivate",
+            "[GroundService] Update system state sensor {:?} status to reactivate",
             sensor
         );
         state.set_sensor_active(sensor, true);
@@ -247,11 +247,11 @@ impl GroundService {
         let now = Utc::now();
         let mut map = tracker.lock().await;
         if let Some(last) = map.get(situation) {
-            info!("Situation: {:?} is cooldown", situation);
+            info!("[GroundService] Situation: {:?} is cooldown", situation);
             let since_last = now.signed_duration_since(*last).num_seconds();
             if since_last < 10 {
                 warn!(
-                    "{:?} ignored (only {}s since last trigger, needs 10s cooldown)",
+                    "[GroundService] {:?} ignored (only {}s since last trigger, needs 10s cooldown)",
                     situation, since_last
                 );
                 return false;

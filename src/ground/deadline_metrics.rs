@@ -34,7 +34,7 @@ impl DeadlineMetrics {
     pub fn report(&self, command_type: &CommandType) {
         if let Some((min, max, avg)) = Self::stats(&self.met_delays) {
             info!(
-                "[{:?}] Met deadlines (early) → count: {}, min: {} ms, max: {} ms, avg: {:.2} ms",
+                "[DeadlineMetrics] {:?} met deadlines (early) → count: {}, min: {} ms, max: {} ms, avg: {:.2} ms",
                 command_type,
                 self.met_delays.len(),
                 min,
@@ -44,7 +44,7 @@ impl DeadlineMetrics {
         }
         if let Some((min, max, avg)) = Self::stats(&self.miss_delays) {
             info!(
-                "[{:?}] Missed deadlines (delay)→ count: {}, min: {} ms, max: {} ms, avg: {:.2} ms",
+                "[DeadlineMetrics] {:?} missed deadlines (delay)→ count: {}, min: {} ms, max: {} ms, avg: {:.2} ms",
                 command_type,
                 self.miss_delays.len(),
                 min,

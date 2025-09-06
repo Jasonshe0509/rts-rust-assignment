@@ -1,6 +1,5 @@
 use std::process;
 use std::sync::Arc;
-use log::warn;
 use sysinfo::{Pid, System};
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
@@ -55,7 +54,7 @@ impl ProgramUtilization {
             if let Some(proc) = sys.process(pid) {
                 let cpu_usage = proc.cpu_usage() as f64;
                 metrics.lock().await.update(cpu_usage);
-                info!("Program CPU Utilization: {:.2}%", cpu_usage);
+                info!("[ProgramUtilization] Program CPU Utilization: {:.2}%", cpu_usage);
             }
         }
     }
@@ -71,7 +70,7 @@ impl ProgramUtilization {
             if let Some(proc) = sys.process(pid) {
                 let mem_mb = proc.memory() as f64 / 1024.0;
                 metrics.lock().await.update(mem_mb);
-                info!("Memory (RSS): {:.2} MB", mem_mb);
+                info!("[ProgramUtilization] Memory (RSS): {:.2} MB", mem_mb);
             }
         }
     }

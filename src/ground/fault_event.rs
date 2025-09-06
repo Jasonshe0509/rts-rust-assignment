@@ -57,8 +57,8 @@ impl FaultEvent {
             .sum::<usize>()
             + self.fault_resolve.len();
 
-        info!("Total faults detected : {}", total_faults);
-        info!("Total faults recovered: {}", self.fault_resolve.len());
+        info!("[Fault Event] Total faults detected : {}", total_faults);
+        info!("[Fault Event] Total faults recovered: {}", self.fault_resolve.len());
         info!("---------------------------------");
 
         // Group recovery times by situation
@@ -89,7 +89,7 @@ impl FaultEvent {
                 match situation {
                     FaultSituation::DelayedData(sensor) | FaultSituation::CorruptedData(sensor) => {
                         info!(
-                            "[Satellite Fault Issue: {:?}] → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
+                            "[Fault Event] Satellite Fault Issue: {:?} → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
                             situation,
                             times.len(),
                             min,
@@ -99,7 +99,7 @@ impl FaultEvent {
                     }
                     FaultSituation::ReRequest(sensor) | FaultSituation::LossOfContact(sensor) => {
                         info!(
-                            "[Missing/Delay Detected Issue from Ground: {:?}] → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
+                            "[Fault Event] Missing/Delay Detected Issue from Ground: {:?} → recovered {} times, min={}ms, max={}ms, avg={:.2}ms",
                             situation,
                             times.len(),
                             min,

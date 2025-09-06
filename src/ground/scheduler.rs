@@ -70,23 +70,23 @@ impl Scheduler {
         loop {
             let now = Utc::now();
             let mut sched = schedule_command.lock().await;
-            info!("Checking for new command request");
+            info!("[Scheduler] Checking for new command request");
             if let Some(command) = sched.take() {
                 self.heap.push(command);
                 info!(
-                    "Command successfully pushed into scheduler heap (heap size: {})",
+                    "[Scheduler] Command successfully pushed into scheduler heap (heap size: {})",
                     self.heap.len()
                 );
                 *sched = None;
             } else {
                 drop(sched);
-                info!("No new command request found");
+                info!("[Scheduler] No new command request found");
             }
             if let Some(command) = self.heap.peek() {
                 if command.release_time <= now {
                     let mut command = self.heap.pop().unwrap();
                     info!(
-                        "Command: {:?} has been released for execution",
+                        "[Scheduler] Command: {:?} has been released for execution",
                         command.command_type
                     );
 
@@ -97,12 +97,12 @@ impl Scheduler {
 
                     if dispatch_latency > 2 && command.priority >= 5 {
                         warn!(
-                            "Urgent command {:?} exceeded 2ms dispatch: {}ms",
+                            "[Scheduler] Urgent command {:?} exceeded 2ms dispatch: {}ms",
                             command.command_type, dispatch_latency
                         );
                     } else if dispatch_latency <= 2 && command.priority >= 5 {
                         info!(
-                            "Urgent command {:?} has been dispatched within {}ms",
+                            "[Scheduler] Urgent command {:?} has been dispatched within {}ms",
                             command.command_type, dispatch_latency
                         );
                     }
@@ -110,7 +110,7 @@ impl Scheduler {
                     //Log scheduling drift: difference between scheduled and actual task start times
                     if command.priority < 5 {
                         info!(
-                            "Scheduling drift: difference between scheduled and actual task start times for command {:?}: {}ms",
+                            "[Scheduler] Scheduling drift: difference between scheduled and actual task start times for command {:?}: {}ms",
                             command.command_type, dispatch_latency
                         );
                     }
@@ -123,7 +123,7 @@ impl Scheduler {
                         let jitter = (dispatch_latency - prev_latency).abs();
 
                         info!(
-                            "Jitter for command {:?}: {} ms",
+                            "[Scheduler] Jitter for command {:?}: {} ms",
                             command.command_type, jitter
                         );
 
@@ -136,52 +136,52 @@ impl Scheduler {
                     }
 
                     let start = Instant::now();
-                    info!("Validating command whether safe for execute");
+                    info!("[Scheduler] Validating command whether safe for execute");
                     if let Err(e) = command.validate(&self.system_state).await {
                         let latency_us = start.elapsed().as_micros(); // microseconds
                         warn!(
-                            "Command {:?} rejected due to {:?} (latency: {} µs)",
+                            "[Scheduler] Command {:?} rejected due to {:?} (latency: {} µs)",
                             command.command_type, e, latency_us
                         );
                         continue;
                     } else {
                         let latency_us = start.elapsed().as_micros(); // microseconds
                         info!(
-                            "Command {:?} validated successfully (latency: {} µs)",
+                            "[Scheduler] Command {:?} validated successfully (latency: {} µs)",
                             command.command_type, latency_us
                         );
                     }
 
                     let uplink_start = Instant::now();
                     info!(
-                        "Preparing data details for uplink: {:?}",
+                        "[Scheduler] Preparing data details for uplink: {:?}",
                         command.command_type
                     );
                     let data_details = match DataDetails::new(&command.command_type) {
                         Ok(details) => details,
                         Err(e) => {
-                            error!("Failed to create DataDetails: {}", e);
+                            error!("[Scheduler] Failed to create DataDetails: {}", e);
                             continue;
                         }
                     };
 
                     info!(
-                        "Compressing the data details : {:?} for uplink: {:?}",
+                        "[Scheduler] Compressing the data details : {:?} for uplink: {:?}",
                         data_details, command.command_type
                     );
                     let data = Compressor::compress(data_details);
                     info!(
-                        "Preparing packet data for uplink: {:?}",
+                        "[Scheduler] Preparing packet data for uplink: {:?}",
                         command.command_type
                     );
                     let packet_data = PacketizeData::new(data.len() as f64, data);
                     info!(
-                        "Data has been packed with id {}, ready for serialization",
+                        "[Scheduler] Data has been packed with id {}, ready for serialization",
                         packet_data.packet_id
                     );
                     let packet = bincode::serialize(&packet_data).unwrap();
                     info!(
-                        "Packet {} has been serialize , ready for uplink: {:?}",
+                        "[Scheduler] Packet {} has been serialize , ready for uplink: {:?}",
                         packet_data.packet_id, command.command_type
                     );
                     self.sender
@@ -191,7 +191,7 @@ impl Scheduler {
                     let uplink_latency = uplink_start.elapsed().as_millis();
 
                     info!(
-                        "Packet {} uplink completed (latency: {} ms)",
+                        "[Scheduler] Packet {} uplink completed (latency: {} ms)",
                         packet_data.packet_id, uplink_latency
                     );
 
@@ -214,7 +214,7 @@ impl Scheduler {
                             .signed_duration_since(command.absolute_deadline)
                             .num_milliseconds();
                         warn!(
-                            "Command {:?} exceeded its deadline by {} ms",
+                            "[Scheduler] Command {:?} exceeded its deadline by {} ms",
                             command.command_type, miss
                         );
                         metrics
@@ -227,7 +227,7 @@ impl Scheduler {
                             .signed_duration_since(complete_time)
                             .num_milliseconds();
                         info!(
-                            "Command {:?} completed {} ms before its deadline",
+                            "[Scheduler] Command {:?} completed {} ms before its deadline",
                             command.command_type, early
                         );
                         metrics
@@ -249,7 +249,7 @@ impl Scheduler {
                     tokio::select! {
                         _ = sleep_until(target_instant) => {},
                         _ = self.notify.notified() => {
-                            info!("Notified has been received, new command has been added");
+                            info!("[Scheduler] Notified has been received, new command has been added");
                         },
                     }
                 }
@@ -258,7 +258,7 @@ impl Scheduler {
                 tokio::select! {
                 _ = sleep_until(sleep_until_instant) => {},
                 _ = self.notify.notified() => {
-                        info!("Notified has been received, new command has been added");
+                        info!("[Scheduler] Notified has been received, new command has been added");
                     },
                 }
             }

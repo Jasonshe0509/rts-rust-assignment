@@ -21,22 +21,22 @@ use rts_rust_assignment::ground::jitter_metrics::JitterMetricsMap;
 #[tokio::main]
 async fn main() {
     LogGenerator::new("ground");
-    info!("Ground system starting...");
+    info!("[Main] Ground system starting...");
 
     // Connect to RabbitMQ
     let conn = Connection::connect("amqp://127.0.0.1:5672//", ConnectionProperties::default())
         .await
         .expect("Failed to connect to RabbitMQ");
-    info!("Connected to RabbitMQ");
+    info!("[Main] Connected to RabbitMQ");
 
     let channel = conn
         .create_channel()
         .await
         .expect("Failed to create channel");
-    info!("Channel created successfully");
+    info!("[Main] Channel created successfully");
 
     let sender = Sender::new(channel.clone(), "command_queue");
-    info!("Sender bound to 'command_queue'");
+    info!("[Main] Sender bound to 'command_queue'");
 
     let fault_event = Arc::new(Mutex::new(FaultEvent::new()));
     let system_state = Arc::new(Mutex::new(SystemState::new()));
@@ -67,9 +67,9 @@ async fn main() {
         tracker,
         Arc::clone(&notify),
     );
-    info!("Receiver bound to 'telemetry_queue'");
+    info!("[Main] Receiver bound to 'telemetry_queue'");
 
-    info!("Running scheduler + receiver");
+    info!("[Main] Running scheduler + receiver");
 
     let cpu_metrics = Arc::new(Mutex::new(Metrics::new()));
     let mem_metrics = Arc::new(Mutex::new(Metrics::new()));
@@ -103,7 +103,7 @@ async fn main() {
         .unwrap();
 
     info!(
-        "Queue 'telemetry_queue': {} messages, {} consumers",
+        "[Main] Queue 'telemetry_queue': {} messages, {} consumers",
         queue_info.message_count(),
         queue_info.consumer_count()
     );
@@ -112,23 +112,23 @@ async fn main() {
     cpu_handle.abort();
     mem_handle.abort();
 
-    info!("Simulation finished within 5 minutes");
+    info!("[Main] Simulation finished within 5 minutes");
 
     if let Err(e) = channel.close(200, "Stop").await {
-        error!("Failed to close channel: {:?}", e);
+        error!("[Main] Failed to close channel: {:?}", e);
     } else {
-        info!("Channel closed");
+        info!("[Main] Channel closed");
     }
 
     if let Err(e) = conn.close(200, "Stop").await {
-        error!("Failed to close connection: {:?}", e);
+        error!("[Main] Failed to close connection: {:?}", e);
     } else {
-        info!("Connection closed");
+        info!("[Main] Connection closed");
     }
-    info!("System performance reports: ");
+    info!("[Main] System performance reports: ");
     info!("===== Command Scheduler Summary =====");
     let total_commands = total_uplink_commands.lock().await;
-    info!("Total commands sent: {}", total_commands);
+    info!("[Main] Total commands sent: {}", total_commands);
     let metrics = deadline_metrics.lock().await;
     for (cmd_type, data) in metrics.iter() {
         data.report(cmd_type);
@@ -137,7 +137,7 @@ async fn main() {
     info!("===== Command Jitter Summary =====");
     for (cmd, metrics) in &*jitter_metrics.lock().await {
         info!(
-            "Command {:?} → Jitter(min={}, max={}, avg={:?})",
+            "[Main] Command {:?} → Jitter(min={}, max={}, avg={:?})",
             cmd,
             if metrics.min_jitter == i64::MAX { 0 } else { metrics.min_jitter },
             if metrics.max_jitter == i64::MIN { 0 } else { metrics.max_jitter },
@@ -149,7 +149,7 @@ async fn main() {
     // Print summary
     let cpu = cpu_metrics.lock().await;
     info!(
-        "CPU Utilization Summary -> Min: {:.2}%, Max: {:.2}%, Avg: {:.2}%",
+        "[Main] CPU Utilization Summary -> Min: {:.2}%, Max: {:.2}%, Avg: {:.2}%",
         cpu.min,
         cpu.max,
         cpu.average()
@@ -157,7 +157,7 @@ async fn main() {
 
     let mem = mem_metrics.lock().await;
     info!(
-        "Memory Utilization Summary -> Min: {:.2} MB, Max: {:.2} MB, Avg: {:.2} MB",
+        "[Main] Memory Utilization Summary -> Min: {:.2} MB, Max: {:.2} MB, Avg: {:.2} MB",
         mem.min,
         mem.max,
         mem.average()
@@ -166,5 +166,5 @@ async fn main() {
     let fault = fault_event.lock().await;
     fault.report();
 
-    info!("Ground system shutting down");
+    info!("[Main] Ground system shutting down");
 }

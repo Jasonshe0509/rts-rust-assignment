@@ -19,7 +19,7 @@ use lapin::{
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Notify};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 pub struct Receiver {
     validator: PacketValidator,
@@ -51,7 +51,7 @@ impl Receiver {
     }
 
     pub async fn run(&mut self, scheduler_command: Arc<Mutex<Option<Command>>>) {
-        info!("Receiver starting from queue: {} ...", self.queue_name);
+        info!("[Receiver] Receiver starting from queue: {} ...", self.queue_name);
         // declare queue
         self.channel
             .queue_declare(
@@ -61,7 +61,7 @@ impl Receiver {
             )
             .await
             .expect("Queue declare failed");
-        info!("Queue {} has been declared", self.queue_name);
+        info!("[Receiver] Queue {} has been declared", self.queue_name);
         self.channel
             .queue_purge(&self.queue_name, Default::default())
             .await
@@ -78,7 +78,7 @@ impl Receiver {
             )
             .await
             .expect("Failed to start consumer");
-        info!("Consumer for queue: {} has started", self.queue_name);
+        info!("[Receiver] Consumer for queue: {} has started", self.queue_name);
 
         let mut last_check = Instant::now();
         let check_interval = Duration::from_secs(30);
@@ -89,7 +89,7 @@ impl Receiver {
                 if last_check.elapsed() >= check_interval {
                     if let Ok((msg_count, cons_count)) = self.get_queue_info().await {
                         info!(
-                            "Queue '{}': {} messages, {} consumers",
+                            "[Receiver] Queue '{}': {} messages, {} consumers",
                             self.queue_name, msg_count, cons_count
                         );
                     }
@@ -103,18 +103,18 @@ impl Receiver {
                         .expect("Invalid timestamp");
                     let latency = arrival_time.signed_duration_since(sent_time);
                     info!(
-                        "Latency of log packet reception: {} ms",
+                        "[Receiver] Latency of log packet reception: {} ms",
                         latency.num_milliseconds()
                     );
                 } else {
-                    warn!("Invalid timestamp received in message properties");
+                    warn!("[Receiver] Invalid timestamp received in message properties");
                 }
 
                 //decoding within 3ms
                 let start = Instant::now();
                 let packet: PacketizeData = bincode::deserialize(&delivery.data).unwrap();
                 info!(
-                    "Packet {} that sent from satellite has been deserialize",
+                    "[Receiver] Packet {} that sent from satellite has been deserialize",
                     packet.packet_id
                 );
                 let fault: Option<FaultMessageData>;
@@ -122,13 +122,13 @@ impl Receiver {
                 let transmission_data: TransmissionData =
                     Compressor::decompress(packet.data.clone());
                 info!(
-                    "Packet {} that sent from satellite has been decompressed",
+                    "[Receiver] Packet {} that sent from satellite has been decompressed",
                     packet.packet_id
                 );
                 match transmission_data {
                     TransmissionData::Fault(fault_message_data) => {
                         info!(
-                            "Fault packet {} detected: {:?}",
+                            "[Receiver] Fault packet {} detected: {:?}",
                             packet.packet_id, fault_message_data
                         );
                         fault = Some(fault_message_data);
@@ -136,7 +136,7 @@ impl Receiver {
                     }
                     TransmissionData::Sensor(sensor_data) => {
                         info!(
-                            "Sensor packet {} detected: {:?}",
+                            "[Receiver] Sensor packet {} detected: {:?}",
                             packet.packet_id, sensor_data
                         );
                         sensor = Some(sensor_data);
@@ -146,13 +146,13 @@ impl Receiver {
                 let elapsed = start.elapsed();
                 if elapsed.as_millis() > 3 {
                     warn!(
-                        "Packet {} decoding took {} ms (too slow)",
+                        "[Receiver] Packet {} decoding took {} ms (too slow)",
                         packet.packet_id,
                         elapsed.as_millis()
                     );
                 } else {
                     info!(
-                        "Packet {} decoding took {} ms",
+                        "[Receiver] Packet {} decoding took {} ms",
                         packet.packet_id,
                         elapsed.as_millis()
                     );
@@ -169,7 +169,7 @@ impl Receiver {
                 if let Some(sensor_data) = sensor {
                     let start_time = Utc::now();
                     info!(
-                        "Validating sensor packet {}: {:?}",
+                        "[Receiver] Validating sensor packet {}: {:?}",
                         packet.packet_id, sensor_data.sensor_type
                     );
                     self.validator
@@ -188,13 +188,13 @@ impl Receiver {
                         .signed_duration_since(start_time)
                         .num_milliseconds();
                     info!(
-                        "Validation for sensor packet {:?} trigger completed in {} ms",
+                        "[Receiver] Validation for sensor packet {:?} trigger completed in {} ms",
                         packet.packet_id, duration
                     );
                 } else if let Some(fault_data) = fault {
                     let start_time = Utc::now();
                     info!(
-                        "Detecting fault packet {}: {:?}",
+                        "[Receiver] Detecting fault packet {}: {:?}",
                         packet.packet_id, fault_data.situation
                     );
                     GroundService::fault_detection(
@@ -207,16 +207,16 @@ impl Receiver {
                         .signed_duration_since(start_time)
                         .num_milliseconds();
                     info!(
-                        "Detecting fault packet {:?} trigger completed in {} ms",
+                        "[Receiver] Detecting fault packet {:?} trigger completed in {} ms",
                         packet.packet_id, duration
                     );
                 }
-                info!("Complete handling the packet {}", packet.packet_id);
+                info!("[Receiver] Complete handling the packet {}", packet.packet_id);
 
                 delivery.ack(BasicAckOptions::default()).await.unwrap();
             }
         }
-        warn!("Consumer loop ended — no more messages or consumer dropped");
+        warn!("[Receiver] Consumer loop ended — no more messages or consumer dropped");
     }
     pub fn calculate_reception_drift(
         current_time: DateTime<Utc>,
@@ -229,25 +229,25 @@ impl Receiver {
                 .num_milliseconds();
             if drift_ms > 0 {
                 warn!(
-                    "Reception drift for packet {}: {} ms (late arrival)",
+                    "[Receiver] Reception drift for packet {}: {} ms (late arrival)",
                     packet_id, drift_ms
                 );
             } else {
-                info!("Packet {} arrived exactly on time", packet_id);
+                info!("[Receiver] Packet {} arrived exactly on time", packet_id);
             }
             drift_ms
         } else {
             let early = expected_arrival_time.signed_duration_since(current_time);
             let drift_ms = -early.num_milliseconds();
             info!(
-                "Reception drift for packet {}: {} ms (early arrival)",
+                "[Receiver] Reception drift for packet {}: {} ms (early arrival)",
                 packet_id, drift_ms
             );
             drift_ms
         }
     }
 
-    async fn get_queue_info(&self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
+    pub async fn get_queue_info(&self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
         let queue_info = self
             .channel
             .queue_declare(

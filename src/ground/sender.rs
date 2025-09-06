@@ -27,9 +27,9 @@ impl Sender {
             )
             .await
         {
-            error!("Failed to send command: {}", e);
+            error!("[Sender] Failed to send command: {}", e);
         } else {
-            info!("Command has been sent with packet {}", packet_id);
+            info!("[Sender] Command has been sent with packet {}", packet_id);
         }
     }
 }

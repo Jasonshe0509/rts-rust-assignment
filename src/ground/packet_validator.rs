@@ -63,7 +63,7 @@ impl PacketValidator {
         if num > 1 && num > prev_max + 1 {
             for missing in prev_max + 1..num {
                 if !reported_set.contains(&missing) {
-                    warn!("Missing packet: {}{} has been detected", prefix, missing);
+                    warn!("[PacketValidator] Missing packet: {}{} has been detected", prefix, missing);
                     reported_set.insert(missing);
                     *count += 1;
                     trigger_rerequest = true;
@@ -71,7 +71,7 @@ impl PacketValidator {
                 }
             }
         } else if (drift > &self.delay_threshold_ms) {
-            warn!("Packet {} delayed by {} ms", packet.packet_id, drift);
+            warn!("[PacketValidator] Packet {} delayed by {} ms", packet.packet_id, drift);
             *count += 1;
             trigger_rerequest = true;
             state.update_sensor_failure(&sensor_type, true);
@@ -86,7 +86,7 @@ impl PacketValidator {
             //simulate loss of contract
             *count = 0;
             let start = Utc::now();
-            info!("Triggering Loss of Contact for sensor {:?}", sensor_type);
+            info!("[PacketValidator] Triggering Loss of Contact for sensor {:?}", sensor_type);
             GroundService::trigger_loss_of_contact(
                 &sensor_type,
                 schedule_command.clone(),
@@ -97,13 +97,13 @@ impl PacketValidator {
             .await;
             let duration = Utc::now().signed_duration_since(start).num_milliseconds();
             info!(
-                "Loss of Contact for sensor {:?} trigger completed in {} ms",
+                "[PacketValidator] Loss of Contact for sensor {:?} trigger completed in {} ms",
                 sensor_type, duration
             );
         } else if (trigger_rerequest) {
             // trigger re-request
             let start = Utc::now();
-            info!("Triggering Re-request for sensor {:?}", sensor_type);
+            info!("[PacketValidator] Triggering Re-request for sensor {:?}", sensor_type);
             GroundService::trigger_rerequest(
                 &sensor_type,
                 schedule_command.clone(),
@@ -114,11 +114,11 @@ impl PacketValidator {
             .await;
             let duration = Utc::now().signed_duration_since(start).num_milliseconds();
             info!(
-                "Re-request for sensor {:?} trigger completed in {} ms",
+                "[PacketValidator] Re-request for sensor {:?} trigger completed in {} ms",
                 sensor_type, duration
             );
         } else {
-            info!("Packet {} does not consist any error!", packet.packet_id);
+            info!("[PacketValidator] Packet {} does not consist any error!", packet.packet_id);
         }
     }
 }
