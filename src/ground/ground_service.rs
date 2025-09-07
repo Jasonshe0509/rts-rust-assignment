@@ -1,10 +1,13 @@
 use crate::ground::command::{Command, CommandType};
 use crate::ground::fault_event::{FaultEvent, FaultResolveData};
 use crate::ground::system_state::SystemState;
+use crate::ground::uplink::{DataDetails, PacketizeData};
 use crate::satellite::fault_message::{FaultMessageData, FaultSituation, FaultType};
 use crate::satellite::sensor::SensorType;
+use crate::util::compressor::Compressor;
 use crate::util::trigger_tracker::TriggerTracker;
 use chrono::{Duration, Utc};
+use quanta::Instant;
 use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard, Notify};
 use tracing::{error, info, warn};
@@ -40,6 +43,9 @@ impl GroundService {
             3,
             Duration::milliseconds(600),
             Duration::milliseconds(400),
+            false,
+            None,
+            None,
         );
 
         loop {
@@ -62,43 +68,69 @@ impl GroundService {
         fault_event: &Arc<Mutex<FaultEvent>>,
         tracker: &TriggerTracker,
         notify: &Arc<Notify>,
+        system_state: &Arc<Mutex<SystemState>>,
     ) {
         let situation = FaultSituation::LossOfContact(sensor_type.clone());
 
         if !Self::check_cooldown(tracker, &situation).await {
             return;
         }
-
-        let fault_message_data = FaultMessageData {
-            fault_type: FaultType::Fault,
-            situation,
-            timestamp: Utc::now(),
-            message: format!(
-                "Fault: Loss of contact for {:?} has been detected",
-                sensor_type
-            ),
-        };
-        let mut fault = fault_event.lock().await;
-        fault.add_fault(&fault_message_data);
-        drop(fault);
-
+        //pre-validated and packet for urgent command
+        info!(
+            "[Ground Service] Conducting pre-command validation and pre-packet for urgent command"
+        );
+        let command_type = CommandType::LC(sensor_type.clone());
+        let data_details = DataDetails::new(&command_type).unwrap();
+        let data = Compressor::compress(data_details);
+        let packet_data = PacketizeData::new(data.len() as f64, data);
+        let packet = bincode::serialize(&packet_data).unwrap();
         let command = Command::new_one_shot(
             CommandType::LC(sensor_type.clone()),
             5,
             Duration::milliseconds(0),
             Duration::milliseconds(400),
+            true,
+            Some(packet),
+            Some(packet_data.packet_id),
         );
-        loop {
-            {
-                let mut command_schedule = schedule_command.lock().await;
-                if (command_schedule.is_none()) {
-                    *command_schedule = Some(command.clone());
-                    notify.notify_one();
-                    break;
+        let start = Instant::now();
+        if let Err(e) = command.validate(&system_state).await {
+            let latency_us = start.elapsed().as_micros(); // microseconds
+            warn!(
+                "[Ground Service] Command {:?} rejected due to {:?} (latency: {} µs)",
+                command.command_type, e, latency_us
+            );
+        } else {
+            let latency_us = start.elapsed().as_micros(); // microseconds
+            info!(
+                "[Ground Service] Command {:?} validated successfully (latency: {} µs)",
+                command.command_type, latency_us
+            );
+            let fault_message_data = FaultMessageData {
+                fault_type: FaultType::Fault,
+                situation,
+                timestamp: Utc::now(),
+                message: format!(
+                    "Fault: Loss of contact for {:?} has been detected",
+                    sensor_type
+                ),
+            };
+            let mut fault = fault_event.lock().await;
+            fault.add_fault(&fault_message_data);
+            drop(fault);
+
+            loop {
+                {
+                    let mut command_schedule = schedule_command.lock().await;
+                    if (command_schedule.is_none()) {
+                        *command_schedule = Some(command.clone());
+                        notify.notify_one();
+                        break;
+                    }
                 }
+                //yield to allow other tasks to run
+                tokio::task::yield_now().await;
             }
-            //yield to allow other tasks to run
-            tokio::task::yield_now().await;
         }
     }
 
@@ -237,7 +269,8 @@ impl GroundService {
             fault.add_fault_resolve(resolve_data);
         }
         match &fault_message_data.situation {
-            FaultSituation::CorruptedDataRecovered(sensor) | FaultSituation::DelayedDataRecovered (sensor) => {
+            FaultSituation::CorruptedDataRecovered(sensor)
+            | FaultSituation::DelayedDataRecovered(sensor) => {
                 info!(
                     "[GroundService] Update system state sensor {:?} status to reactivate",
                     sensor
@@ -252,9 +285,9 @@ impl GroundService {
         let now = Utc::now();
         let mut map = tracker.lock().await;
         if let Some(last) = map.get(situation) {
-            info!("[GroundService] Situation: {:?} is cooldown", situation);
             let since_last = now.signed_duration_since(*last).num_seconds();
             if since_last < 10 {
+                info!("[GroundService] Situation: {:?} is cooldown", situation);
                 warn!(
                     "[GroundService] {:?} ignored (only {}s since last trigger, needs 10s cooldown)",
                     situation, since_last

@@ -80,18 +80,27 @@ fn bench_uplink_jitter(c: &mut Criterion) {
             &cmd,
             |b, command| {
                 b.to_async(&rt).iter(|| async {
-                    let data = black_box(mock_packet_data(command.clone()));
-                    let packet_id = format!("bench_{:?}_{}", command, fastrand::u64(..));
-                    let start_time = clock.now();
-                    sender.send_command(&data, &packet_id).await;
-                    let latency =
-                        clock.now().duration_since(start_time).as_nanos() as f64 / 1_000_000.0; // ms
+                    let latency;
+                    if command.clone() == CommandType::LC(SensorType::AntennaPointingSensor){
+                        let data = black_box(mock_packet_data(command.clone()));
+                        let start_time = clock.now();
+                        let packet_id = format!("bench_{:?}_{}", command, fastrand::u64(..));
+                        sender.send_command(&data, &packet_id).await;
+                        latency =
+                            clock.now().duration_since(start_time).as_nanos() as f64 / 1_000_000.0; // ms
+                    } else{
+                        let start_time = clock.now();
+                        let data = black_box(mock_packet_data(command.clone()));
+                        let packet_id = format!("bench_{:?}_{}", command, fastrand::u64(..));
+                        sender.send_command(&data, &packet_id).await;
+                        latency =
+                            clock.now().duration_since(start_time).as_nanos() as f64 / 1_000_000.0; // ms
+                    }
                     black_box(latency);
                 })
             },
         );
     }
-
     group.finish();
 }
 
@@ -259,7 +268,7 @@ impl GroundReceiver {
                 info!("Complete handling the packet {}", packet.packet_id);
 
                 delivery.ack(BasicAckOptions::default()).await.unwrap();
-
+                println!("Test");
                 processed += 1;
                 if let Some(max) = max_messages {
                     if processed >= max {
@@ -426,7 +435,7 @@ fn bench_packet_decoding_execution_drift(c: &mut Criterion) {
             let drift = actual
                 .checked_sub(expected)
                 .unwrap_or_else(|| Duration::from_millis(0)); // if finished earlier, drift=0
-            drift
+            black_box(drift);
         })
     });
     group.finish();

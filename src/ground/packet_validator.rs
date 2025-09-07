@@ -93,6 +93,7 @@ impl PacketValidator {
                 fault_event,
                 tracker,
                 notify,
+                system_state,
             )
             .await;
             let duration = Utc::now().signed_duration_since(start).num_milliseconds();
@@ -109,7 +110,7 @@ impl PacketValidator {
                 schedule_command.clone(),
                 fault_event,
                 tracker,
-                notify,
+                notify
             )
             .await;
             let duration = Utc::now().signed_duration_since(start).num_milliseconds();

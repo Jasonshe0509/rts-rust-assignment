@@ -90,37 +90,22 @@ impl Scheduler {
                         command.command_type
                     );
 
-                    // urgent commands (≤2ms dispatch)
-                    let dispatch_latency = now
+                    let release_latency = now
                         .signed_duration_since(command.release_time)
                         .num_milliseconds();
 
-                    if dispatch_latency > 2 && command.priority >= 5 {
-                        warn!(
-                            "[Scheduler] Urgent command {:?} exceeded 2ms dispatch: {}ms",
-                            command.command_type, dispatch_latency
-                        );
-                    } else if dispatch_latency <= 2 && command.priority >= 5 {
-                        info!(
-                            "[Scheduler] Urgent command {:?} has been dispatched within {}ms",
-                            command.command_type, dispatch_latency
-                        );
-                    }
-
                     //Log scheduling drift: difference between scheduled and actual task start times
-                    if command.priority < 5 {
-                        info!(
-                            "[Scheduler] Scheduling drift: difference between scheduled and actual task start times for command {:?}: {}ms",
-                            command.command_type, dispatch_latency
-                        );
-                    }
+                    info!(
+                        "[Scheduler] Scheduling drift: difference between scheduled and actual task start times for command {:?}: {}ms",
+                        command.command_type, release_latency
+                    );
 
                     let mut last_latencies = self.last_latencies.lock().await;
 
                     if let Some(prev_latency) =
-                        last_latencies.insert(command.command_type.clone(), dispatch_latency)
+                        last_latencies.insert(command.command_type.clone(), release_latency)
                     {
-                        let jitter = (dispatch_latency - prev_latency).abs();
+                        let jitter = (release_latency - prev_latency).abs();
 
                         info!(
                             "[Scheduler] Jitter for command {:?}: {} ms",
@@ -134,66 +119,96 @@ impl Scheduler {
                             .or_insert_with(JitterMetrics::new)
                             .record(jitter);
                     }
-
-                    let start = Instant::now();
-                    info!("[Scheduler] Validating command whether safe for execute");
-                    if let Err(e) = command.validate(&self.system_state).await {
-                        let latency_us = start.elapsed().as_micros(); // microseconds
-                        warn!(
-                            "[Scheduler] Command {:?} rejected due to {:?} (latency: {} µs)",
-                            command.command_type, e, latency_us
-                        );
-                        continue;
-                    } else {
-                        let latency_us = start.elapsed().as_micros(); // microseconds
+                    let dispatch_start = Instant::now();
+                    // urgent command handling
+                    if command.priority >= 5
+                        && command.pre_validated == true
+                        && command.pre_computed_packet.is_some()
+                    {
+                        let dispatch_latency = dispatch_start.elapsed().as_millis();
+                        if dispatch_latency > 2 {
+                            warn!(
+                                "[Scheduler] Urgent command {:?} exceeded 2ms dispatch: {}ms",
+                                command.command_type, dispatch_latency
+                            );
+                        } else {
+                            info!(
+                                "[Scheduler] Urgent command {:?} has been dispatched within {}ms",
+                                command.command_type, dispatch_latency
+                            );
+                        }
+                        self.sender
+                            .send_command(
+                                &command.pre_computed_packet.clone().unwrap(),
+                                &command.pre_computed_packet_id.clone().unwrap(),
+                            )
+                            .await;
                         info!(
-                            "[Scheduler] Command {:?} validated successfully (latency: {} µs)",
-                            command.command_type, latency_us
+                            "[Scheduler] Packet {} uplink completed (latency: {} ms)",
+                            command.pre_computed_packet_id.clone().unwrap(),
+                            dispatch_start.elapsed().as_millis()
+                        );
+                    } else {
+                        // normal command handling
+                        info!("[Scheduler] Validating command whether safe for execute");
+                        if let Err(e) = command.validate(&self.system_state).await {
+                            let latency_us = dispatch_start.elapsed().as_micros(); // microseconds
+                            warn!(
+                                "[Scheduler] Command {:?} rejected due to {:?} (latency: {} µs)",
+                                command.command_type, e, latency_us
+                            );
+                            continue;
+                        } else {
+                            let latency_us = dispatch_start.elapsed().as_micros(); // microseconds
+                            info!(
+                                "[Scheduler] Command {:?} validated successfully (latency: {} µs)",
+                                command.command_type, latency_us
+                            );
+                        }
+
+                        let uplink_start = Instant::now();
+                        info!(
+                            "[Scheduler] Preparing data details for uplink: {:?}",
+                            command.command_type
+                        );
+                        let data_details = match DataDetails::new(&command.command_type) {
+                            Ok(details) => details,
+                            Err(e) => {
+                                error!("[Scheduler] Failed to create DataDetails: {}", e);
+                                continue;
+                            }
+                        };
+
+                        info!(
+                            "[Scheduler] Compressing the data details : {:?} for uplink: {:?}",
+                            data_details, command.command_type
+                        );
+                        let data = Compressor::compress(data_details);
+                        info!(
+                            "[Scheduler] Preparing packet data for uplink: {:?}",
+                            command.command_type
+                        );
+                        let packet_data = PacketizeData::new(data.len() as f64, data);
+                        info!(
+                            "[Scheduler] Data has been packed with id {}, ready for serialization",
+                            packet_data.packet_id
+                        );
+                        let packet = bincode::serialize(&packet_data).unwrap();
+                        info!(
+                            "[Scheduler] Packet {} has been serialize , ready for uplink: {:?}",
+                            packet_data.packet_id, command.command_type
+                        );
+                        self.sender
+                            .send_command(&packet, &packet_data.packet_id)
+                            .await;
+
+                        let uplink_latency = uplink_start.elapsed().as_millis();
+
+                        info!(
+                            "[Scheduler] Packet {} uplink completed (latency: {} ms)",
+                            packet_data.packet_id, uplink_latency
                         );
                     }
-
-                    let uplink_start = Instant::now();
-                    info!(
-                        "[Scheduler] Preparing data details for uplink: {:?}",
-                        command.command_type
-                    );
-                    let data_details = match DataDetails::new(&command.command_type) {
-                        Ok(details) => details,
-                        Err(e) => {
-                            error!("[Scheduler] Failed to create DataDetails: {}", e);
-                            continue;
-                        }
-                    };
-
-                    info!(
-                        "[Scheduler] Compressing the data details : {:?} for uplink: {:?}",
-                        data_details, command.command_type
-                    );
-                    let data = Compressor::compress(data_details);
-                    info!(
-                        "[Scheduler] Preparing packet data for uplink: {:?}",
-                        command.command_type
-                    );
-                    let packet_data = PacketizeData::new(data.len() as f64, data);
-                    info!(
-                        "[Scheduler] Data has been packed with id {}, ready for serialization",
-                        packet_data.packet_id
-                    );
-                    let packet = bincode::serialize(&packet_data).unwrap();
-                    info!(
-                        "[Scheduler] Packet {} has been serialize , ready for uplink: {:?}",
-                        packet_data.packet_id, command.command_type
-                    );
-                    self.sender
-                        .send_command(&packet, &packet_data.packet_id)
-                        .await;
-
-                    let uplink_latency = uplink_start.elapsed().as_millis();
-
-                    info!(
-                        "[Scheduler] Packet {} uplink completed (latency: {} ms)",
-                        packet_data.packet_id, uplink_latency
-                    );
 
                     match &command.command_type {
                         CommandType::LC(sensor) => {

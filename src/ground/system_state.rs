@@ -1,12 +1,11 @@
 use crate::ground::command::CommandType;
 use crate::satellite::sensor::SensorType;
 use chrono::Local;
-use log::error;
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::Write;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RejectionSummary {

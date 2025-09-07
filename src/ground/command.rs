@@ -23,6 +23,9 @@ pub struct Command {
     pub relative_deadline: Duration, // in seconds
     pub absolute_deadline: DateTime<Utc>,
     pub one_shot: bool,
+    pub pre_validated: bool,
+    pub pre_computed_packet: Option<Vec<u8>>,
+    pub pre_computed_packet_id: Option<String>,
 }
 
 impl Command {
@@ -42,6 +45,9 @@ impl Command {
             relative_deadline: relative_deadline_millis,
             absolute_deadline: release_time + relative_deadline_millis,
             one_shot: false,
+            pre_validated: false,
+            pre_computed_packet: None,
+            pre_computed_packet_id: None,
         }
     }
     pub fn new_one_shot(
@@ -49,6 +55,9 @@ impl Command {
         priority: u8,
         interval_millis: Duration,
         relative_deadline_millis: Duration,
+        pre_validated: bool,
+        pre_computed_packet: Option<Vec<u8>>,
+        pre_computed_packet_id: Option<String>,
     ) -> Self {
         let now = Utc::now();
         let release_time = now + interval_millis;
@@ -60,6 +69,9 @@ impl Command {
             relative_deadline: relative_deadline_millis,
             absolute_deadline: release_time + relative_deadline_millis,
             one_shot: true,
+            pre_validated,
+            pre_computed_packet,
+            pre_computed_packet_id,
         }
     }
     pub async fn validate(&self, system_state: &Arc<Mutex<SystemState>>) -> Result<(), String> {
@@ -84,7 +96,7 @@ impl Command {
 
             CommandType::LC(sensor) => {
                 let mut state = system_state.lock().await;
-                if state.has_consecutive_failures(sensor) {
+                if state.has_consecutive_failures(sensor) && state.is_sensor_active(sensor) {
                     Ok(())
                 } else {
                     let reason = format!(
